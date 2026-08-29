@@ -157,7 +157,7 @@ func generate_beatmap() -> void:
 	beatmap.clear()
 	for r in pattern_repeats:
 		for lane in beat_pattern:
-			if lane != -1:
+			if lane >= 0 and lane < LANE_COUNT:
 				beatmap.append({"time": t, "lane": lane})
 			t += step
 
