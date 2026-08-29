@@ -3,7 +3,6 @@ extends Control
 signal note_hit(judgment: String)
 
 const LANE_COUNT := 4
-const LANE_PHYSICAL_KEYS := [KEY_D, KEY_F, KEY_J, KEY_K]
 const LANE_KEY_LABELS := ["D", "F", "J", "K"]
 const LANE_COLORS := [
 	Color(0.95, 0.28, 0.35),
@@ -146,13 +145,10 @@ func _build_ui() -> void:
 	add_child(judgment_label)
 
 
-func configure(level: Dictionary) -> void:
-	if level.has("bpm"):
-		bpm = level["bpm"]
-	if level.has("pattern"):
-		beat_pattern = level["pattern"]
-	if level.has("repeats"):
-		pattern_repeats = level["repeats"]
+func configure(level: LevelData) -> void:
+	bpm = level.bpm
+	beat_pattern = level.beat_pattern
+	pattern_repeats = level.pattern_repeats
 
 
 func generate_beatmap() -> void:
@@ -169,6 +165,11 @@ func generate_beatmap() -> void:
 func _process(delta: float) -> void:
 	if not active:
 		return
+
+	for lane in LANE_COUNT:
+		if Input.is_action_just_pressed("lane_%d" % lane):
+			flash_hit_line(lane)
+			try_hit(lane)
 
 	song_time += delta
 
@@ -207,16 +208,6 @@ func spawn_note(beat: Dictionary) -> void:
 		"hit_time": beat["time"],
 		"judged": false,
 	})
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not active:
-		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		var lane := LANE_PHYSICAL_KEYS.find(event.physical_keycode)
-		if lane != -1:
-			flash_hit_line(lane)
-			try_hit(lane)
 
 
 func try_hit(lane: int) -> void:

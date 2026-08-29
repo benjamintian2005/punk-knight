@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/EnemyType.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+shape = "diamond"
+color = Color(0.9, 0.35, 0.75, 1)
+radius = 15.0
+hp = 90.0
+speed = 70.0
+contact_damage = 18.0
+spawn_weight = 2

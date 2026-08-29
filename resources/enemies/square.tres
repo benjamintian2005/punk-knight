@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="EnemyType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/EnemyType.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+shape = "square"
+color = Color(0.55, 0.4, 0.9, 1)
+radius = 17.0
+hp = 180.0
+speed = 38.0
+contact_damage = 16.0
+spawn_weight = 2

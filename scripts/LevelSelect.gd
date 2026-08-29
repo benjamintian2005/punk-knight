@@ -32,7 +32,7 @@ func _ready() -> void:
 	subtitle.add_theme_color_override("font_color", Color(0.6, 0.6, 0.68))
 	add_child(subtitle)
 
-	var levels: Array = GameState.LEVELS
+	var levels: Array[LevelData] = GameState.levels
 	var total_height := levels.size() * CARD_HEIGHT + (levels.size() - 1) * CARD_GAP
 	var start_y: float = vsize.y * 0.14 + 54.0 + 60.0
 	var start_x := (vsize.x - CARD_WIDTH) / 2.0
@@ -40,7 +40,7 @@ func _ready() -> void:
 	var first_button: Button = null
 
 	for i in levels.size():
-		var lvl: Dictionary = levels[i]
+		var lvl: LevelData = levels[i]
 		var card_y := start_y + i * (CARD_HEIGHT + CARD_GAP)
 		var button := _build_card(lvl, Vector2(start_x, card_y))
 		button.pressed.connect(_on_level_pressed.bind(i))
@@ -52,7 +52,7 @@ func _ready() -> void:
 		first_button.grab_focus()
 
 
-func _build_card(lvl: Dictionary, card_pos: Vector2) -> Button:
+func _build_card(lvl: LevelData, card_pos: Vector2) -> Button:
 	var button := Button.new()
 	button.position = card_pos
 	button.size = Vector2(CARD_WIDTH, CARD_HEIGHT)
@@ -77,7 +77,7 @@ func _build_card(lvl: Dictionary, card_pos: Vector2) -> Button:
 	button.add_theme_stylebox_override("focus", hover_style.duplicate())
 
 	var name_label := Label.new()
-	name_label.text = lvl.get("name", "")
+	name_label.text = lvl.title
 	name_label.position = Vector2(0.0, 14.0)
 	name_label.size = Vector2(CARD_WIDTH, 32.0)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -87,7 +87,7 @@ func _build_card(lvl: Dictionary, card_pos: Vector2) -> Button:
 	button.add_child(name_label)
 
 	var desc_label := Label.new()
-	desc_label.text = lvl.get("description", "")
+	desc_label.text = lvl.description
 	desc_label.position = Vector2(0.0, 52.0)
 	desc_label.size = Vector2(CARD_WIDTH, 24.0)
 	desc_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

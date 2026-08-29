@@ -1,34 +1,17 @@
 extends Node
 
-const LEVELS := [
-	{
-		"id": "warmup", "name": "Warmup",
-		"description": "Slow and sparse - learn the ropes.",
-		"bpm": 100.0,
-		"pattern": [0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1],
-		"repeats": 3,
-		"enemy_spawn_min": 2.0, "enemy_spawn_max": 3.4,
-	},
-	{
-		"id": "rush_hour", "name": "Rush Hour",
-		"description": "Steady groove, steady pressure.",
-		"bpm": 128.0,
-		"pattern": [0, -1, 1, -1, 2, 3, -1, 1, 0, 2, -1, 3, 1, -1, 0, -1],
-		"repeats": 4,
-		"enemy_spawn_min": 1.0, "enemy_spawn_max": 2.2,
-	},
-	{
-		"id": "overdrive", "name": "Overdrive",
-		"description": "Fast, dense, relentless.",
-		"bpm": 150.0,
-		"pattern": [0, 1, -1, 2, 3, 1, 0, -1, 2, 3, 0, 1, 2, -1, 3, 1],
-		"repeats": 5,
-		"enemy_spawn_min": 0.55, "enemy_spawn_max": 1.3,
-	},
-]
+const LEVEL_DIR := "res://resources/levels/"
 
+var levels: Array[LevelData] = []
 var selected_level_index := 0
 
 
-func get_selected_level() -> Dictionary:
-	return LEVELS[selected_level_index]
+func _ready() -> void:
+	for file_name in DirAccess.get_files_at(LEVEL_DIR):
+		if file_name.ends_with(".tres"):
+			levels.append(load(LEVEL_DIR + file_name) as LevelData)
+	levels.sort_custom(func(a, b): return a.order < b.order)
+
+
+func get_selected_level() -> LevelData:
+	return levels[selected_level_index]

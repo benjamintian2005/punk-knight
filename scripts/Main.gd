@@ -8,7 +8,7 @@ var game_over_overlay: Control
 func _ready() -> void:
 	var vsize := get_viewport_rect().size
 	var half := vsize.x / 2.0
-	var level: Dictionary = GameState.get_selected_level()
+	var level: LevelData = GameState.get_selected_level()
 
 	rhythm_side = Control.new()
 	rhythm_side.set_script(load("res://scripts/RhythmSide.gd"))
@@ -34,7 +34,7 @@ func _ready() -> void:
 	battle_side.player_died.connect(_on_player_died)
 
 	var level_label := Label.new()
-	level_label.text = "%s  -  ESC for level select" % level.get("name", "")
+	level_label.text = "%s  -  ESC for level select" % level.title
 	level_label.position = Vector2(0.0, 2.0)
 	level_label.size = Vector2(vsize.x, 16.0)
 	level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -75,14 +75,11 @@ func _on_player_died() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey) or not event.pressed or event.echo:
-		return
-
-	if event.physical_keycode == KEY_ESCAPE:
+	if event.is_action_pressed("ui_cancel"):
 		get_tree().change_scene_to_file("res://scenes/LevelSelect.tscn")
 		return
 
-	if game_over_overlay.visible and (event.physical_keycode == KEY_ENTER or event.physical_keycode == KEY_KP_ENTER):
+	if game_over_overlay.visible and event.is_action_pressed("ui_accept"):
 		_restart()
 
 

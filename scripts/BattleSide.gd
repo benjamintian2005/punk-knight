@@ -11,13 +11,10 @@ const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
 var enemy_spawn_min := 1.0
 var enemy_spawn_max := 2.2
 
-# shape, color, radius, hp, speed, contact damage, spawn weight
-const ENEMY_TYPES := [
-	{"shape": "circle", "color": Color(0.85, 0.25, 0.35), "radius": 15.0, "hp": 100.0, "speed": 55.0, "damage": 12.0, "weight": 5},
-	{"shape": "triangle", "color": Color(0.95, 0.55, 0.2), "radius": 16.0, "hp": 60.0, "speed": 95.0, "damage": 10.0, "weight": 3},
-	{"shape": "square", "color": Color(0.55, 0.4, 0.9), "radius": 17.0, "hp": 180.0, "speed": 38.0, "damage": 16.0, "weight": 2},
-	{"shape": "diamond", "color": Color(0.9, 0.35, 0.75), "radius": 15.0, "hp": 90.0, "speed": 70.0, "damage": 18.0, "weight": 2},
-]
+# Level-dependent enemy roster; overridden by configure() before _ready runs.
+# Falls back to _get_default_enemy_types() when a level doesn't specify one.
+var default_enemy_types: Array[EnemyType] = []
+var active_enemy_types: Array[EnemyType] = []
 
 const PERFECT_RADIUS := 240.0
 const PERFECT_DAMAGE := 100.0
@@ -46,11 +43,33 @@ var enemies: Array = []
 var pulses: Array = []
 
 
-func configure(level: Dictionary) -> void:
-	if level.has("enemy_spawn_min"):
-		enemy_spawn_min = level["enemy_spawn_min"]
-	if level.has("enemy_spawn_max"):
-		enemy_spawn_max = level["enemy_spawn_max"]
+func configure(level: LevelData) -> void:
+	enemy_spawn_min = level.enemy_spawn_min
+	enemy_spawn_max = level.enemy_spawn_max
+	active_enemy_types = level.enemy_types if not level.enemy_types.is_empty() else _get_default_enemy_types()
+
+
+func _get_default_enemy_types() -> Array[EnemyType]:
+	if default_enemy_types.is_empty():
+		default_enemy_types = [
+			_make_enemy_type("circle", Color(0.85, 0.25, 0.35), 15.0, 100.0, 55.0, 12.0, 5),
+			_make_enemy_type("triangle", Color(0.95, 0.55, 0.2), 16.0, 60.0, 95.0, 10.0, 3),
+			_make_enemy_type("square", Color(0.55, 0.4, 0.9), 17.0, 180.0, 38.0, 16.0, 2),
+			_make_enemy_type("diamond", Color(0.9, 0.35, 0.75), 15.0, 90.0, 70.0, 18.0, 2),
+		]
+	return default_enemy_types
+
+
+func _make_enemy_type(shape: String, color: Color, radius: float, hp: float, speed: float, damage: float, weight: int) -> EnemyType:
+	var t := EnemyType.new()
+	t.shape = shape
+	t.color = color
+	t.radius = radius
+	t.hp = hp
+	t.speed = speed
+	t.contact_damage = damage
+	t.spawn_weight = weight
+	return t
 
 
 func _ready() -> void:
@@ -136,38 +155,38 @@ func _process(delta: float) -> void:
 	_update_pulses()
 
 
-func _pick_enemy_type() -> Dictionary:
+func _pick_enemy_type() -> EnemyType:
 	var total := 0
-	for t in ENEMY_TYPES:
-		total += int(t["weight"])
+	for t in active_enemy_types:
+		total += t.spawn_weight
 	var roll := randi_range(1, total)
 	var acc := 0
-	for t in ENEMY_TYPES:
-		acc += int(t["weight"])
+	for t in active_enemy_types:
+		acc += t.spawn_weight
 		if roll <= acc:
 			return t
-	return ENEMY_TYPES[0]
+	return active_enemy_types[0]
 
 
 func spawn_enemy() -> void:
-	var type: Dictionary = _pick_enemy_type()
+	var type: EnemyType = _pick_enemy_type()
 	var angle := randf() * TAU
 	var spawn_radius: float = min(size.x, size.y) / 2.0 - 10.0
 	var pos: Vector2 = character_center + Vector2(cos(angle), sin(angle)) * spawn_radius
 
 	var node := Control.new()
 	node.set_script(ENEMY_SCRIPT)
-	node.setup(type["shape"], type["color"], type["radius"])
+	node.setup(type.shape, type.color, type.radius)
 	node.position = pos - node.size / 2.0
 	enemies_layer.add_child(node)
 
 	enemies.append({
 		"node": node,
 		"center": pos,
-		"hp": type["hp"],
-		"radius": type["radius"],
-		"speed": type["speed"],
-		"damage": type["damage"],
+		"hp": type.hp,
+		"radius": type.radius,
+		"speed": type.speed,
+		"damage": type.contact_damage,
 	})
 
 

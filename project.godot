@@ -18,6 +18,7 @@ run/main_scene="res://scenes/LevelSelect.tscn"
 [autoload]
 
 GameState="*res://scripts/GameState.gd"
+InputSetup="*res://scripts/InputSetup.gd"
 
 [display]
 
