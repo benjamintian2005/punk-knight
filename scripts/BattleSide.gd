@@ -5,12 +5,17 @@ signal player_died
 const CHARACTER_RADIUS := 26.0
 const CHARACTER_MAX_HP := 100.0
 
-const ENEMY_RADIUS := 15.0
-const ENEMY_SPEED := 55.0
-const ENEMY_MAX_HP := 100.0
-const ENEMY_CONTACT_DAMAGE := 12.0
+const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
 const ENEMY_SPAWN_MIN := 1.0
 const ENEMY_SPAWN_MAX := 2.2
+
+# shape, color, radius, hp, speed, contact damage, spawn weight
+const ENEMY_TYPES := [
+	{"shape": "circle", "color": Color(0.85, 0.25, 0.35), "radius": 15.0, "hp": 100.0, "speed": 55.0, "damage": 12.0, "weight": 5},
+	{"shape": "triangle", "color": Color(0.95, 0.55, 0.2), "radius": 16.0, "hp": 60.0, "speed": 95.0, "damage": 10.0, "weight": 3},
+	{"shape": "square", "color": Color(0.55, 0.4, 0.9), "radius": 17.0, "hp": 180.0, "speed": 38.0, "damage": 16.0, "weight": 2},
+	{"shape": "diamond", "color": Color(0.9, 0.35, 0.75), "radius": 15.0, "hp": 90.0, "speed": 70.0, "damage": 18.0, "weight": 2},
+]
 
 const PERFECT_RADIUS := 240.0
 const PERFECT_DAMAGE := 100.0
@@ -122,40 +127,49 @@ func _process(delta: float) -> void:
 	_update_pulses()
 
 
+func _pick_enemy_type() -> Dictionary:
+	var total := 0
+	for t in ENEMY_TYPES:
+		total += int(t["weight"])
+	var roll := randi_range(1, total)
+	var acc := 0
+	for t in ENEMY_TYPES:
+		acc += int(t["weight"])
+		if roll <= acc:
+			return t
+	return ENEMY_TYPES[0]
+
+
 func spawn_enemy() -> void:
+	var type: Dictionary = _pick_enemy_type()
 	var angle := randf() * TAU
 	var spawn_radius: float = min(size.x, size.y) / 2.0 - 10.0
 	var pos: Vector2 = character_center + Vector2(cos(angle), sin(angle)) * spawn_radius
 
-	var node := Panel.new()
-	node.size = Vector2(ENEMY_RADIUS * 2.0, ENEMY_RADIUS * 2.0)
+	var node := Control.new()
+	node.set_script(ENEMY_SCRIPT)
+	node.setup(type["shape"], type["color"], type["radius"])
 	node.position = pos - node.size / 2.0
-	node.pivot_offset = node.size / 2.0
-	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.85, 0.25, 0.35)
-	style.corner_radius_top_left = int(ENEMY_RADIUS)
-	style.corner_radius_top_right = int(ENEMY_RADIUS)
-	style.corner_radius_bottom_left = int(ENEMY_RADIUS)
-	style.corner_radius_bottom_right = int(ENEMY_RADIUS)
-	node.add_theme_stylebox_override("panel", style)
 	enemies_layer.add_child(node)
 
 	enemies.append({
 		"node": node,
 		"center": pos,
-		"hp": ENEMY_MAX_HP,
+		"hp": type["hp"],
+		"radius": type["radius"],
+		"speed": type["speed"],
+		"damage": type["damage"],
 	})
 
 
 func _update_enemies(delta: float) -> void:
 	for enemy in enemies.duplicate():
 		var dir: Vector2 = (character_center - enemy["center"]).normalized()
-		enemy["center"] = enemy["center"] + dir * ENEMY_SPEED * delta
+		enemy["center"] = enemy["center"] + dir * float(enemy["speed"]) * delta
 		enemy["node"].position = enemy["center"] - enemy["node"].size / 2.0
 
-		if enemy["center"].distance_to(character_center) <= CHARACTER_RADIUS + ENEMY_RADIUS:
-			take_damage(ENEMY_CONTACT_DAMAGE)
+		if enemy["center"].distance_to(character_center) <= CHARACTER_RADIUS + float(enemy["radius"]):
+			take_damage(float(enemy["damage"]))
 			_remove_enemy(enemy)
 
 
@@ -242,7 +256,7 @@ func _apply_knockback(enemy: Dictionary) -> void:
 	_flash(enemy["node"])
 
 
-func _flash(node: Panel) -> void:
+func _flash(node: Control) -> void:
 	var tween := create_tween()
 	tween.tween_property(node, "modulate", Color(1.4, 1.4, 1.4), 0.05)
 	tween.tween_property(node, "modulate", Color(1, 1, 1), 0.15)
@@ -250,7 +264,7 @@ func _flash(node: Panel) -> void:
 
 func _remove_enemy(enemy: Dictionary) -> void:
 	enemies.erase(enemy)
-	var node: Panel = enemy["node"]
+	var node: Control = enemy["node"]
 	var tween := create_tween()
 	tween.tween_property(node, "modulate:a", 0.0, 0.12)
 	tween.parallel().tween_property(node, "scale", Vector2(0.3, 0.3), 0.12)
