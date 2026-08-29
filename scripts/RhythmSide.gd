@@ -21,11 +21,13 @@ const PERFECT_WINDOW := 0.05
 const GOOD_WINDOW := 0.12
 const MISS_WINDOW := 0.18
 
-const BPM := 120.0
-# lane index per step, -1 is a rest. One step = an eighth note at BPM.
-const BEAT_PATTERN := [0, -1, 1, -1, 2, 3, -1, 1, 0, 2, -1, 3, 1, -1, 0, -1]
-const PATTERN_REPEATS := 4
 const START_OFFSET := 1.5
+
+# Level-dependent song settings; overridden by configure() before _ready runs.
+# lane index per step, -1 is a rest. One step = an eighth note at bpm.
+var bpm := 120.0
+var beat_pattern := [0, -1, 1, -1, 2, 3, -1, 1, 0, 2, -1, 3, 1, -1, 0, -1]
+var pattern_repeats := 4
 
 var active := true
 
@@ -144,12 +146,21 @@ func _build_ui() -> void:
 	add_child(judgment_label)
 
 
+func configure(level: Dictionary) -> void:
+	if level.has("bpm"):
+		bpm = level["bpm"]
+	if level.has("pattern"):
+		beat_pattern = level["pattern"]
+	if level.has("repeats"):
+		pattern_repeats = level["repeats"]
+
+
 func generate_beatmap() -> void:
-	var step := 60.0 / BPM / 2.0
+	var step := 60.0 / bpm / 2.0
 	var t := START_OFFSET
 	beatmap.clear()
-	for r in PATTERN_REPEATS:
-		for lane in BEAT_PATTERN:
+	for r in pattern_repeats:
+		for lane in beat_pattern:
 			if lane != -1:
 				beatmap.append({"time": t, "lane": lane})
 			t += step

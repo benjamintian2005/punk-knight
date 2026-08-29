@@ -6,8 +6,10 @@ const CHARACTER_RADIUS := 26.0
 const CHARACTER_MAX_HP := 100.0
 
 const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
-const ENEMY_SPAWN_MIN := 1.0
-const ENEMY_SPAWN_MAX := 2.2
+
+# Level-dependent spawn pressure; overridden by configure() before _ready runs.
+var enemy_spawn_min := 1.0
+var enemy_spawn_max := 2.2
 
 # shape, color, radius, hp, speed, contact damage, spawn weight
 const ENEMY_TYPES := [
@@ -44,9 +46,16 @@ var enemies: Array = []
 var pulses: Array = []
 
 
+func configure(level: Dictionary) -> void:
+	if level.has("enemy_spawn_min"):
+		enemy_spawn_min = level["enemy_spawn_min"]
+	if level.has("enemy_spawn_max"):
+		enemy_spawn_max = level["enemy_spawn_max"]
+
+
 func _ready() -> void:
 	_build_ui()
-	time_to_next_spawn = randf_range(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX)
+	time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
 
 
 func _build_ui() -> void:
@@ -121,7 +130,7 @@ func _process(delta: float) -> void:
 	time_to_next_spawn -= delta
 	if time_to_next_spawn <= 0.0:
 		spawn_enemy()
-		time_to_next_spawn = randf_range(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX)
+		time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
 
 	_update_enemies(delta)
 	_update_pulses()
@@ -305,5 +314,5 @@ func reset() -> void:
 	character_hp = CHARACTER_MAX_HP
 	update_hp_bar()
 	elapsed_time = 0.0
-	time_to_next_spawn = randf_range(ENEMY_SPAWN_MIN, ENEMY_SPAWN_MAX)
+	time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
 	active = true

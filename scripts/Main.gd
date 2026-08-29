@@ -8,15 +8,18 @@ var game_over_overlay: Control
 func _ready() -> void:
 	var vsize := get_viewport_rect().size
 	var half := vsize.x / 2.0
+	var level: Dictionary = GameState.get_selected_level()
 
 	rhythm_side = Control.new()
 	rhythm_side.set_script(load("res://scripts/RhythmSide.gd"))
+	rhythm_side.configure(level)
 	rhythm_side.position = Vector2.ZERO
 	rhythm_side.size = Vector2(half, vsize.y)
 	add_child(rhythm_side)
 
 	battle_side = Control.new()
 	battle_side.set_script(load("res://scripts/BattleSide.gd"))
+	battle_side.configure(level)
 	battle_side.position = Vector2(half, 0.0)
 	battle_side.size = Vector2(vsize.x - half, vsize.y)
 	add_child(battle_side)
@@ -29,6 +32,15 @@ func _ready() -> void:
 
 	rhythm_side.note_hit.connect(battle_side.trigger_pulse)
 	battle_side.player_died.connect(_on_player_died)
+
+	var level_label := Label.new()
+	level_label.text = "%s  -  ESC for level select" % level.get("name", "")
+	level_label.position = Vector2(0.0, 2.0)
+	level_label.size = Vector2(vsize.x, 16.0)
+	level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	level_label.add_theme_font_size_override("font_size", 12)
+	level_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.65))
+	add_child(level_label)
 
 	_build_game_over_overlay(vsize)
 
@@ -63,11 +75,15 @@ func _on_player_died() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not game_over_overlay.visible:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.physical_keycode == KEY_ENTER or event.physical_keycode == KEY_KP_ENTER:
-			_restart()
+
+	if event.physical_keycode == KEY_ESCAPE:
+		get_tree().change_scene_to_file("res://scenes/LevelSelect.tscn")
+		return
+
+	if game_over_overlay.visible and (event.physical_keycode == KEY_ENTER or event.physical_keycode == KEY_KP_ENTER):
+		_restart()
 
 
 func _restart() -> void:
