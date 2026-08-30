@@ -168,6 +168,7 @@ func _setup_audio() -> void:
 		return
 	audio = AudioStreamPlayer.new()
 	audio.stream = load(song_path)
+	audio.bus = "Music"
 	add_child(audio)
 	audio.play()
 
