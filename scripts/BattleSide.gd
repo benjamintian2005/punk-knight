@@ -7,6 +7,11 @@ const CHARACTER_MAX_HP := 100.0
 const MISS_DAMAGE := 5.0
 
 const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
+const KNIGHT_TEXTURE := preload("res://art/knight_title.png")
+
+# Visual size only - CHARACTER_RADIUS still governs collision, so shrinking or
+# growing the sprite doesn't change how hard the game is.
+const CHARACTER_SPRITE_HEIGHT := 104.0
 
 # Level-dependent spawn pressure; overridden by configure() before _ready runs.
 var enemy_spawn_min := 1.0
@@ -27,13 +32,17 @@ const GOOD_KNOCKBACK := 90.0
 const GOOD_DURATION := 0.3
 const GOOD_COLOR := Color(0.5, 0.9, 1.0)
 
+# Enemies are notes now - RhythmSide spawns them on the chart. Flip this back
+# on to restore the old free-running spawner.
+var ambient_enemies := false
+
 var active := true
 var elapsed_time := 0.0
 var time_to_next_spawn := 1.0
 
 var character_center: Vector2
 var character_hp := CHARACTER_MAX_HP
-var character_node: Panel
+var character_node: TextureRect
 var hp_fill: ColorRect
 var hp_bar_width := 220.0
 var hp_label: Label
@@ -50,18 +59,27 @@ func configure(level: LevelData) -> void:
 	active_enemy_types = level.enemy_types if not level.enemy_types.is_empty() else _get_default_enemy_types()
 
 
+func get_enemy_roster() -> Array[EnemyType]:
+	return active_enemy_types
+
+
 func _get_default_enemy_types() -> Array[EnemyType]:
 	if default_enemy_types.is_empty():
 		default_enemy_types = [
-			_make_enemy_type("circle", Color(0.85, 0.25, 0.35), 15.0, 100.0, 55.0, 12.0, 5),
-			_make_enemy_type("triangle", Color(0.95, 0.55, 0.2), 16.0, 60.0, 95.0, 10.0, 3),
-			_make_enemy_type("square", Color(0.55, 0.4, 0.9), 17.0, 180.0, 38.0, 16.0, 2),
-			_make_enemy_type("diamond", Color(0.9, 0.35, 0.75), 15.0, 90.0, 70.0, 18.0, 2),
+			_make_enemy_type("circle", Color(0.85, 0.25, 0.35), 15.0, 100.0, 55.0, 12.0, 5,
+				"res://art/enemies/goblin_run.png", 8, 12.0, 56.0),
+			_make_enemy_type("triangle", Color(0.95, 0.55, 0.2), 16.0, 60.0, 95.0, 10.0, 3,
+				"res://art/enemies/flying_eye_flight.png", 8, 14.0, 52.0),
+			_make_enemy_type("square", Color(0.55, 0.4, 0.9), 17.0, 180.0, 38.0, 16.0, 2,
+				"res://art/enemies/skeleton_walk.png", 4, 8.0, 66.0),
+			_make_enemy_type("diamond", Color(0.9, 0.35, 0.75), 15.0, 90.0, 70.0, 18.0, 2,
+				"res://art/enemies/mushroom_run.png", 8, 12.0, 56.0),
 		]
 	return default_enemy_types
 
 
-func _make_enemy_type(shape: String, color: Color, radius: float, hp: float, speed: float, damage: float, weight: int) -> EnemyType:
+func _make_enemy_type(shape: String, color: Color, radius: float, hp: float, speed: float, damage: float, weight: int,
+		sprite_path: String = "", sprite_frames: int = 4, sprite_fps: float = 10.0, sprite_height: float = 54.0) -> EnemyType:
 	var t := EnemyType.new()
 	t.shape = shape
 	t.color = color
@@ -70,6 +88,10 @@ func _make_enemy_type(shape: String, color: Color, radius: float, hp: float, spe
 	t.speed = speed
 	t.contact_damage = damage
 	t.spawn_weight = weight
+	t.sprite_path = sprite_path
+	t.sprite_frames = sprite_frames
+	t.sprite_fps = sprite_fps
+	t.sprite_height = sprite_height
 	return t
 
 
@@ -119,18 +141,15 @@ func _build_ui() -> void:
 	enemies_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(enemies_layer)
 
-	character_node = Panel.new()
-	character_node.size = Vector2(CHARACTER_RADIUS * 2.0, CHARACTER_RADIUS * 2.0)
+	var sprite_w := CHARACTER_SPRITE_HEIGHT * (float(KNIGHT_TEXTURE.get_width()) / float(KNIGHT_TEXTURE.get_height()))
+	character_node = TextureRect.new()
+	character_node.texture = KNIGHT_TEXTURE
+	character_node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	character_node.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	character_node.size = Vector2(sprite_w, CHARACTER_SPRITE_HEIGHT)
 	character_node.position = character_center - character_node.size / 2.0
 	character_node.pivot_offset = character_node.size / 2.0
 	character_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var char_style := StyleBoxFlat.new()
-	char_style.bg_color = Color(0.55, 0.65, 1.0)
-	char_style.corner_radius_top_left = int(CHARACTER_RADIUS)
-	char_style.corner_radius_top_right = int(CHARACTER_RADIUS)
-	char_style.corner_radius_bottom_left = int(CHARACTER_RADIUS)
-	char_style.corner_radius_bottom_right = int(CHARACTER_RADIUS)
-	character_node.add_theme_stylebox_override("panel", char_style)
 	add_child(character_node)
 
 	pulses_layer = Control.new()
@@ -148,10 +167,11 @@ func _process(delta: float) -> void:
 
 	elapsed_time += delta
 
-	time_to_next_spawn -= delta
-	if time_to_next_spawn <= 0.0:
-		spawn_enemy()
-		time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
+	if ambient_enemies:
+		time_to_next_spawn -= delta
+		if time_to_next_spawn <= 0.0:
+			spawn_enemy()
+			time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
 
 	_update_enemies(delta)
 	_update_pulses()
@@ -178,7 +198,7 @@ func spawn_enemy() -> void:
 
 	var node := Control.new()
 	node.set_script(ENEMY_SCRIPT)
-	node.setup(type.shape, type.color, type.radius)
+	node.setup(type)
 	node.position = pos - node.size / 2.0
 	enemies_layer.add_child(node)
 
@@ -196,6 +216,7 @@ func _update_enemies(delta: float) -> void:
 	for enemy in enemies.duplicate():
 		var dir: Vector2 = (character_center - enemy["center"]).normalized()
 		enemy["center"] = enemy["center"] + dir * float(enemy["speed"]) * delta
+		enemy["node"].set_facing(dir.x < 0.0)
 		enemy["node"].position = enemy["center"] - enemy["node"].size / 2.0
 
 		if enemy["center"].distance_to(character_center) <= CHARACTER_RADIUS + float(enemy["radius"]):

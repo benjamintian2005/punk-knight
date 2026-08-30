@@ -4,7 +4,7 @@ signal note_hit(judgment: String)
 signal note_missed
 
 const LANE_COUNT := 4
-const LANE_KEY_LABELS := ["D", "F", "J", "K"]
+const LANE_KEY_LABELS := ["←", "↓", "↑", "→"]
 const LANE_COLORS := [
 	Color(0.95, 0.28, 0.35),
 	Color(0.30, 0.85, 0.45),
@@ -14,14 +14,21 @@ const LANE_COLORS := [
 
 const NOTE_TRAVEL_TIME := 1.4
 const HIT_LINE_Y_RATIO := 0.5
-const NOTE_RADIUS := 13.0
-const TARGET_RADIUS := 20.0
-const TARGET_SPACING := 92.0
+const NOTE_ARC_HALF := 0.17   # half-width of the slice a creature carries
+const ARC_GAP := 0.05   # radians trimmed off each end so the four read as four
+
+# D F J K -> left, down, up, right. Outward from the knight.
+const LANE_DIRS := [Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1), Vector2(1, 0)]
+const WEDGE_HALF_ANGLE := PI / 4.0   # 45 deg each side -> the four wedges tile
+                                     # the full circle with no dead ground
+const STRIKE_RADIUS := 88.0    # where a creature is judged
+const SPAWN_RADIUS := 300.0    # where it appears; same on every rail, so
+                               # distance reads as time identically in all four
 
 # How hard the target reacts. A whiff barely twitches; PERFECT slams.
-const WHIFF_POP := 1.12
-const GOOD_POP := 1.4
-const PERFECT_POP := 2.1
+const WHIFF_POP := 1.05
+const GOOD_POP := 1.15
+const PERFECT_POP := 1.34
 
 # Combo milestones, each louder than the last.
 const COMBO_MILESTONES := [3, 10, 20, 30]
@@ -34,7 +41,8 @@ const MILESTONE_COLORS := [
 	Color(1.0, 1.0, 1.0),
 ]
 
-const PENTAGRAM_SCRIPT := preload("res://scripts/Pentagram.gd")
+const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
+const LANE_ARC_SCRIPT := preload("res://scripts/LaneArc.gd")
 
 const PERFECT_WINDOW := 0.05
 const GOOD_WINDOW := 0.12
@@ -57,10 +65,9 @@ var audio: AudioStreamPlayer = null
 
 var active := true
 
-var lane_center_x: Array = []
-var hit_line_y: float
-var note_size: Vector2
-var note_speed: float
+var arena_center: Vector2
+var lane_anchor: Array = []
+var enemy_types: Array[EnemyType] = []
 
 var song_time := 0.0
 var beatmap: Array = []
@@ -73,7 +80,7 @@ var max_combo := 0
 var combo_tier := -1
 
 var notes_layer: Control
-var target_rings: Array = []
+var lane_arcs: Array = []
 var ring_tweens: Array = []
 var score_label: Label
 var judgment_label: Label
@@ -89,42 +96,38 @@ func _ready() -> void:
 
 
 func _build_ui() -> void:
-	# No background and no lane columns - just the arena, the knight, and
-	# four targets sitting on him.
-	hit_line_y = size.y * HIT_LINE_Y_RATIO
-	note_size = Vector2(NOTE_RADIUS * 2.0, NOTE_RADIUS * 2.0)
-	note_speed = (hit_line_y - (-note_size.y)) / NOTE_TRAVEL_TIME
+	# One arena: the knight at the centre, four rails running out from him.
+	arena_center = Vector2(size.x / 2.0, size.y * HIT_LINE_Y_RATIO)
 
 	for i in LANE_COUNT:
-		# Four targets spread evenly about the centre of the screen.
-		var cx := size.x / 2.0 + (float(i) - (LANE_COUNT - 1) / 2.0) * TARGET_SPACING
-		lane_center_x.append(cx)
+		var base: float = LANE_DIRS[i].angle()
+		lane_anchor.append(arena_center + LANE_DIRS[i] * STRIKE_RADIUS)
 
-		# The circle a ball drops into.
-		var ring := Panel.new()
-		ring.size = Vector2(TARGET_RADIUS * 2.0, TARGET_RADIUS * 2.0)
-		ring.position = Vector2(cx - TARGET_RADIUS, hit_line_y - TARGET_RADIUS)
-		ring.pivot_offset = ring.size / 2.0
-		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var ring_style := StyleBoxFlat.new()
-		ring_style.bg_color = Color(LANE_COLORS[i].r, LANE_COLORS[i].g, LANE_COLORS[i].b, 0.10)
-		ring_style.border_color = Color(LANE_COLORS[i].r, LANE_COLORS[i].g, LANE_COLORS[i].b, 0.55)
-		ring_style.set_border_width_all(3)
-		ring_style.set_corner_radius_all(int(TARGET_RADIUS))
-		ring.add_theme_stylebox_override("panel", ring_style)
-		add_child(ring)
-		target_rings.append(ring)
+		# A 90-degree arc of the strike ring. Pivot is the knight, so popping it
+		# scales the arc outward from him.
+		var arc := Control.new()
+		arc.set_script(LANE_ARC_SCRIPT)
+		arc.size = size
+		arc.pivot_offset = arena_center
+		arc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		arc.centre = arena_center
+		arc.radius = STRIKE_RADIUS
+		arc.color = LANE_COLORS[i]
+		arc.start_angle = base - WEDGE_HALF_ANGLE + ARC_GAP
+		arc.end_angle = base + WEDGE_HALF_ANGLE - ARC_GAP
+		add_child(arc)
+		lane_arcs.append(arc)
 		ring_tweens.append(null)
 
-		# The letter stays, small, so the binding is still learnable.
 		var key_label := Label.new()
-		key_label.text = LANE_KEY_LABELS[i]
-		key_label.position = Vector2(cx - 20.0, hit_line_y + TARGET_RADIUS + 8.0)
 		key_label.size = Vector2(40.0, 20.0)
+		key_label.position = arena_center + LANE_DIRS[i] * (STRIKE_RADIUS + 30.0) - key_label.size / 2.0
+		key_label.text = LANE_KEY_LABELS[i]
 		key_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		key_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		key_label.add_theme_font_size_override("font_size", 12)
-		key_label.add_theme_color_override("font_color", Color(LANE_COLORS[i].r, LANE_COLORS[i].g, LANE_COLORS[i].b, 0.45))
+		key_label.add_theme_font_size_override("font_size", 20)
+		key_label.add_theme_color_override("font_color", Color(LANE_COLORS[i].r, LANE_COLORS[i].g, LANE_COLORS[i].b, 0.75))
 		add_child(key_label)
 
 	notes_layer = Control.new()
@@ -140,31 +143,52 @@ func _build_ui() -> void:
 	score_label.add_theme_font_size_override("font_size", 18)
 	add_child(score_label)
 
-	# Feedback goes BELOW the knight - everything above him is note runway.
+	# The rails claim up/down/left/right, so text lives on the DIAGONALS.
 	judgment_label = Label.new()
 	judgment_label.text = ""
-	judgment_label.position = Vector2(0.0, hit_line_y + 86.0)
-	judgment_label.size = Vector2(size.x, 40.0)
+	judgment_label.size = Vector2(260.0, 40.0)
+	judgment_label.position = arena_center + Vector2(-200.0, -160.0) - judgment_label.size / 2.0
 	judgment_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	judgment_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	judgment_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	judgment_label.add_theme_font_size_override("font_size", 22)
 	judgment_label.modulate = Color(1, 1, 1, 0)
-	judgment_label.pivot_offset = Vector2(size.x / 2.0, 20.0)
+	judgment_label.pivot_offset = judgment_label.size / 2.0
 	add_child(judgment_label)
 
 	combo_label = Label.new()
 	combo_label.text = ""
-	combo_label.position = Vector2(size.x / 2.0 + TARGET_SPACING * 2.0 + 16.0, hit_line_y - 84.0)
-	combo_label.size = Vector2(400.0, 52.0)
+	combo_label.size = Vector2(360.0, 52.0)
+	combo_label.position = arena_center + Vector2(150.0, -180.0)
 	combo_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	combo_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	combo_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	combo_label.add_theme_font_size_override("font_size", 36)
 	combo_label.modulate = Color(1, 1, 1, 0)
-	# Pivot on the left edge so it scales and swings OUT from the targets.
 	combo_label.pivot_offset = Vector2(0.0, 26.0)
 	combo_label.rotation = MILESTONE_TILT
 	add_child(combo_label)
+
+
+func set_enemy_types(types: Array[EnemyType]) -> void:
+	enemy_types = types
+
+
+func _pick_enemy_type() -> EnemyType:
+	if enemy_types.is_empty():
+		return EnemyType.new()
+	var total := 0
+	for t in enemy_types:
+		total += t.spawn_weight
+	if total <= 0:
+		return enemy_types[0]
+	var roll := randi_range(1, total)
+	var acc := 0
+	for t in enemy_types:
+		acc += t.spawn_weight
+		if roll <= acc:
+			return t
+	return enemy_types[0]
 
 
 func configure(level: LevelData) -> void:
@@ -237,42 +261,84 @@ func _process(delta: float) -> void:
 
 	for note in active_notes.duplicate():
 		var t_remaining: float = note["hit_time"] - song_time
-		note["node"].position.y = hit_line_y - t_remaining * note_speed
+		_place_note(note, t_remaining)
 		if not note["judged"] and t_remaining < -MISS_WINDOW:
 			judge_miss(note)
+
+	queue_redraw()
+
+
+func _draw() -> void:
+	# Every creature carries the slice of the ring it is going to land on: an arc
+	# at its own radius, spanning its own angle. As it closes, the slice shrinks
+	# onto the strike ring and brightens - arriving exactly fills in that piece
+	# of the circle. Drawn here on the parent, so it sits UNDER the creatures.
+	for note in active_notes:
+		var dist: float = note.get("dist", SPAWN_RADIUS)
+		var ang: float = note.get("angle", 0.0)
+		var near: float = 1.0 - clampf((dist - STRIKE_RADIUS) / (SPAWN_RADIUS - STRIKE_RADIUS), 0.0, 1.0)
+		var col: Color = LANE_COLORS[note["lane"]]
+		draw_arc(arena_center, dist, ang - NOTE_ARC_HALF, ang + NOTE_ARC_HALF, 28,
+			Color(col.r, col.g, col.b, lerpf(0.22, 1.0, near)),
+			lerpf(2.5, 7.0, near), true)
+
+
+func _place_note(note: Dictionary, t_remaining: float) -> void:
+	# Distance IS time: full travel time sits at SPAWN_RADIUS, zero sits exactly
+	# on the strike ring, negative keeps walking in toward the knight.
+	var lane: int = note["lane"]
+	var f: float = clampf(t_remaining / NOTE_TRAVEL_TIME, -1.0, 1.0)
+	var dist: float = STRIKE_RADIUS + f * (SPAWN_RADIUS - STRIKE_RADIUS)
+
+	# Each lane owns a full 90-degree wedge, and its arc spans that whole wedge -
+	# so a creature just walks straight in on whatever angle it spawned at and
+	# still crosses its own lane's target. No convergence needed.
+	#
+	# The offset is ANGULAR, so radial distance is untouched, and that is what
+	# the timing is measured on. Spread costs nothing mechanically.
+	var dir: Vector2 = LANE_DIRS[lane].rotated(float(note["spread"]) * WEDGE_HALF_ANGLE)
+	var anchor: Vector2 = arena_center + dir * dist
+
+	note["angle"] = dir.angle()
+	note["dist"] = dist
+
+	var node: Control = note["node"]
+	# Bottom-centre is the anchor, so the creature stands ON its rune and the
+	# rune is what lines up with the ring.
+	node.position = anchor - Vector2(node.size.x / 2.0, node.size.y)
+	# It walks inward, so it faces the way it came from.
+	node.set_facing(dir.x > 0.0)
+	# Nearer draws over further, so overlap reads as depth instead of a glitch.
+	# Must stay NON-NEGATIVE: z_index sorts across the whole canvas layer, not
+	# just among siblings, so a negative value hides these behind BattleSide's
+	# opaque background.
+	node.z_index = maxi(0, int(SPAWN_RADIUS - dist))
 
 
 func spawn_note(beat: Dictionary) -> void:
 	var lane: int = beat["lane"]
-	var note_panel := Panel.new()
-	note_panel.size = note_size
-	note_panel.position = Vector2(lane_center_x[lane] - note_size.x / 2.0, -note_size.y)
-	var style := StyleBoxFlat.new()
-	style.bg_color = LANE_COLORS[lane]
-	style.corner_radius_top_left = int(NOTE_RADIUS)
-	style.corner_radius_top_right = int(NOTE_RADIUS)
-	style.corner_radius_bottom_left = int(NOTE_RADIUS)
-	style.corner_radius_bottom_right = int(NOTE_RADIUS)
-	note_panel.add_theme_stylebox_override("panel", style)
+	var type: EnemyType = _pick_enemy_type()
 
-	# The sigil is a CHILD of the ball, so it rides along and fades with it.
-	var sigil := Control.new()
-	sigil.set_script(PENTAGRAM_SCRIPT)
-	sigil.size = note_size
-	sigil.radius = NOTE_RADIUS - 3.5
-	sigil.line_width = 1.5
-	sigil.color = Color(0.05, 0.03, 0.08, 0.8)
-	sigil.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	note_panel.add_child(sigil)
+	var node := Control.new()
+	node.set_script(ENEMY_SCRIPT)
+	node.setup(type)
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	notes_layer.add_child(node)
 
-	notes_layer.add_child(note_panel)
-
-	active_notes.append({
-		"node": note_panel,
+	var note := {
+		"node": node,
 		"lane": lane,
 		"hit_time": beat["time"],
 		"judged": false,
-	})
+		# Where in this lane's wedge it comes from: -1 one edge, +1 the other.
+		"spread": randf_range(-0.88, 0.88),
+	}
+	active_notes.append(note)
+	_place_note(note, NOTE_TRAVEL_TIME)
+
+	# They appear on-screen rather than off it, so fade them in.
+	node.modulate.a = 0.0
+	create_tween().tween_property(node, "modulate:a", 1.0, 0.22)
 
 
 func try_hit(lane: int) -> void:
@@ -340,10 +406,13 @@ func judge_whiff() -> void:
 
 func remove_note(note: Dictionary) -> void:
 	active_notes.erase(note)
-	var node: Panel = note["node"]
+	var node: Control = note["node"]
+	node.set_process(false)
 	var tween := create_tween()
-	tween.tween_property(node, "modulate:a", 0.0, 0.12)
-	tween.tween_callback(node.queue_free)
+	tween.set_parallel(true)
+	tween.tween_property(node, "modulate:a", 0.0, 0.18)
+	tween.tween_property(node, "scale", Vector2(1.4, 1.4), 0.18)
+	tween.chain().tween_callback(node.queue_free)
 
 
 func update_labels() -> void:
@@ -364,15 +433,15 @@ func show_judgment(text: String, color: Color, punch: float = 1.3) -> void:
 
 
 func _pop_ring(lane: int, amount: float, duration: float) -> void:
-	# Kill any pop still in flight, or a press mid-animation fights the flare.
+	# Kill any pop still in flight, or a press during a flare fights it.
 	var existing = ring_tweens[lane]
 	if existing != null and existing.is_valid():
 		existing.kill()
 
-	var ring: Panel = target_rings[lane]
-	ring.scale = Vector2(amount, amount)
+	var arc: Control = lane_arcs[lane]
+	arc.scale = Vector2(amount, amount)
 	var t := create_tween()
-	t.tween_property(ring, "scale", Vector2.ONE, duration) \
+	t.tween_property(arc, "scale", Vector2.ONE, duration) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	ring_tweens[lane] = t
 
@@ -380,24 +449,20 @@ func _pop_ring(lane: int, amount: float, duration: float) -> void:
 func flash_hit_line(lane: int) -> void:
 	# Fires on EVERY press, hit or not - so a whiff still feels like something.
 	_pop_ring(lane, WHIFF_POP, 0.16)
-
-	var style: StyleBoxFlat = target_rings[lane].get_theme_stylebox("panel")
+	var arc: Control = lane_arcs[lane]
 	var glow := create_tween()
-	glow.tween_property(style, "border_color:a", 1.0, 0.03)
-	glow.tween_property(style, "border_color:a", 0.55, 0.15)
+	glow.tween_property(arc, "modulate", Color(1.8, 1.8, 1.8, 1.0), 0.03)
+	glow.tween_property(arc, "modulate", Color(1, 1, 1, 1), 0.15)
 
 
 func flare_target(lane: int, is_perfect: bool) -> void:
 	_pop_ring(lane, PERFECT_POP if is_perfect else GOOD_POP, 0.34 if is_perfect else 0.22)
 	_spawn_burst(lane, is_perfect)
 
-	# PERFECT washes the ring white; GOOD just saturates its own colour.
-	var style: StyleBoxFlat = target_rings[lane].get_theme_stylebox("panel")
-	var base: Color = LANE_COLORS[lane]
-	var peak: Color = Color(1.0, 1.0, 1.0, 1.0) if is_perfect else Color(base.r, base.g, base.b, 1.0)
-	style.border_color = peak
+	var arc: Control = lane_arcs[lane]
+	arc.modulate = Color(2.6, 2.6, 2.6, 1.0) if is_perfect else Color(1.8, 1.8, 1.8, 1.0)
 	var cool := create_tween()
-	cool.tween_property(style, "border_color", Color(base.r, base.g, base.b, 0.55), 0.35 if is_perfect else 0.2)
+	cool.tween_property(arc, "modulate", Color(1, 1, 1, 1), 0.35 if is_perfect else 0.2)
 
 
 func _spawn_ring_at(centre: Vector2, start_r: float, end_r: float, col: Color, width: int, dur: float) -> void:
@@ -426,9 +491,9 @@ func _spawn_ring_at(centre: Vector2, start_r: float, end_r: float, col: Color, w
 
 func _spawn_burst(lane: int, is_perfect: bool) -> void:
 	_spawn_ring_at(
-		Vector2(lane_center_x[lane], hit_line_y),
-		TARGET_RADIUS,
-		TARGET_RADIUS * (3.0 if is_perfect else 1.8),
+		lane_anchor[lane],
+		18.0,
+		18.0 * (3.0 if is_perfect else 1.8),
 		Color(1.0, 0.95, 0.55) if is_perfect else LANE_COLORS[lane],
 		3 if is_perfect else 2,
 		0.45 if is_perfect else 0.26)
@@ -487,11 +552,11 @@ func _combo_flair(tier: int) -> void:
 	# Every target fires at once...
 	for i in LANE_COUNT:
 		_pop_ring(i, 1.5 + tier * 0.18, 0.34)
-		_spawn_ring_at(Vector2(lane_center_x[i], hit_line_y), TARGET_RADIUS,
-			TARGET_RADIUS * (2.2 + tier * 0.5), col, 3, 0.42)
+		_spawn_ring_at(lane_anchor[i], 18.0,
+			18.0 * (2.2 + tier * 0.5), col, 3, 0.42)
 
 	# ...and one big wave rolls off the knight himself.
-	_spawn_ring_at(Vector2(size.x / 2.0, hit_line_y), TARGET_RADIUS,
+	_spawn_ring_at(arena_center, 18.0,
 		140.0 + tier * 90.0, col, 4 + tier, 0.55 + tier * 0.1)
 
 

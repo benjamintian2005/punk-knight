@@ -24,6 +24,7 @@ func _ready() -> void:
 	rhythm_side = Control.new()
 	rhythm_side.set_script(load("res://scripts/RhythmSide.gd"))
 	rhythm_side.configure(level)
+	rhythm_side.set_enemy_types(battle_side.get_enemy_roster())
 	rhythm_side.position = Vector2.ZERO
 	rhythm_side.size = vsize
 	rhythm_side.mouse_filter = Control.MOUSE_FILTER_IGNORE
