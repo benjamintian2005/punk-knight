@@ -9,31 +9,28 @@ var pause_resume_button: Button
 
 func _ready() -> void:
 	var vsize := get_viewport_rect().size
-	var half := vsize.x / 2.0
 	var level: LevelData = GameState.get_selected_level()
 
+	# The battle owns the whole screen...
+	battle_side = Control.new()
+	battle_side.set_script(load("res://scripts/BattleSide.gd"))
+	battle_side.configure(level)
+	battle_side.position = Vector2.ZERO
+	battle_side.size = vsize
+	add_child(battle_side)
+
+	# ...and the lanes lie on top of it, so notes land ON the knight.
+	# Added second, so it draws over the arena.
 	rhythm_side = Control.new()
 	rhythm_side.set_script(load("res://scripts/RhythmSide.gd"))
 	rhythm_side.configure(level)
 	rhythm_side.position = Vector2.ZERO
-	rhythm_side.size = Vector2(half, vsize.y)
+	rhythm_side.size = vsize
+	rhythm_side.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(rhythm_side)
 
-	battle_side = Control.new()
-	battle_side.set_script(load("res://scripts/BattleSide.gd"))
-	battle_side.configure(level)
-	battle_side.position = Vector2(half, 0.0)
-	battle_side.size = Vector2(vsize.x - half, vsize.y)
-	add_child(battle_side)
-
-	var divider := ColorRect.new()
-	divider.color = Color(1.0, 1.0, 1.0, 0.08)
-	divider.position = Vector2(half - 1.0, 0.0)
-	divider.size = Vector2(2.0, vsize.y)
-	add_child(divider)
-
 	rhythm_side.note_hit.connect(battle_side.trigger_pulse)
-	rhythm_side.note_missed.connect(battle_side.trigger_miss)
+	rhythm_side.note_missed.connect(battle_side.on_note_missed)
 	battle_side.player_died.connect(_on_player_died)
 
 	var level_label := Label.new()
