@@ -28,6 +28,13 @@ var bpm := 120.0
 var beat_pattern := [0, -1, 1, -1, 2, 3, -1, 1, 0, 2, -1, 3, 1, -1, 0, -1]
 var pattern_repeats := 4
 
+# Real-song chart (absolute timestamps). Non-empty means it wins over beat_pattern.
+var song_path := ""
+var audio_offset := 0.0
+var note_times := PackedFloat32Array()
+var note_lanes := PackedInt32Array()
+var audio: AudioStreamPlayer = null
+
 var active := true
 
 var lane_center_x: Array = []
@@ -55,6 +62,7 @@ var judgment_tween: Tween
 func _ready() -> void:
 	generate_beatmap()
 	_build_ui()
+	_setup_audio()
 
 
 func _build_ui() -> void:
@@ -149,12 +157,37 @@ func configure(level: LevelData) -> void:
 	bpm = level.bpm
 	beat_pattern = level.beat_pattern
 	pattern_repeats = level.pattern_repeats
+	song_path = level.song_path
+	audio_offset = level.audio_offset
+	note_times = level.note_times
+	note_lanes = level.note_lanes
+
+
+func _setup_audio() -> void:
+	if song_path == "" or not ResourceLoader.exists(song_path):
+		return
+	audio = AudioStreamPlayer.new()
+	audio.stream = load(song_path)
+	add_child(audio)
+	audio.play()
+
+
+func has_song() -> bool:
+	return audio != null
 
 
 func generate_beatmap() -> void:
+	beatmap.clear()
+
+	# An authored chart: absolute times, already lined up with the recording.
+	if note_times.size() > 0:
+		for i in note_times.size():
+			beatmap.append({"time": note_times[i] + audio_offset, "lane": note_lanes[i]})
+		return
+
+	# Otherwise fall back to the looping eighth-note pattern levels.
 	var step := 60.0 / bpm / 2.0
 	var t := START_OFFSET
-	beatmap.clear()
 	for r in pattern_repeats:
 		for lane in beat_pattern:
 			if lane >= 0 and lane < LANE_COUNT:
@@ -171,13 +204,19 @@ func _process(delta: float) -> void:
 			flash_hit_line(lane)
 			try_hit(lane)
 
-	song_time += delta
+	if audio != null and audio.playing:
+		# The audio clock is the source of truth - the frame clock drifts from it.
+		song_time = audio.get_playback_position() \
+			+ AudioServer.get_time_since_last_mix() \
+			- AudioServer.get_output_latency()
+	else:
+		song_time += delta
 
 	while next_note_index < beatmap.size() and beatmap[next_note_index]["time"] - NOTE_TRAVEL_TIME <= song_time:
 		spawn_note(beatmap[next_note_index])
 		next_note_index += 1
 
-	if next_note_index >= beatmap.size() and active_notes.is_empty():
+	if audio == null and next_note_index >= beatmap.size() and active_notes.is_empty():
 		song_time = 0.0
 		next_note_index = 0
 
@@ -282,6 +321,8 @@ func flash_hit_line(lane: int) -> void:
 
 func set_active(value: bool) -> void:
 	active = value
+	if audio != null:
+		audio.stream_paused = not value
 
 
 func reset() -> void:
@@ -296,3 +337,6 @@ func reset() -> void:
 	update_labels()
 	judgment_label.modulate.a = 0.0
 	active = true
+	if audio != null:
+		audio.stop()
+		audio.play()
