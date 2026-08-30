@@ -1,6 +1,7 @@
 extends Control
 
 signal note_hit(judgment: String)
+signal note_missed
 
 const LANE_COUNT := 4
 const LANE_KEY_LABELS := ["D", "F", "J", "K"]
@@ -284,6 +285,7 @@ func judge_miss(note: Dictionary) -> void:
 	update_labels()
 	show_judgment("MISS", Color(1.0, 0.35, 0.35))
 	remove_note(note)
+	note_missed.emit()
 
 
 func remove_note(note: Dictionary) -> void:

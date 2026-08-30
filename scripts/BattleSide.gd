@@ -26,6 +26,9 @@ const GOOD_KNOCKBACK := 90.0
 const GOOD_DURATION := 0.3
 const GOOD_COLOR := Color(0.5, 0.9, 1.0)
 
+const MISS_DAMAGE := 6.0
+const MISS_FLINCH_COLOR := Color(1.6, 0.35, 0.35)
+
 var active := true
 var elapsed_time := 0.0
 var time_to_next_spawn := 1.0
@@ -303,6 +306,20 @@ func _punch_character() -> void:
 	var tween := create_tween()
 	tween.tween_property(character_node, "scale", Vector2(1.15, 1.15), 0.05)
 	tween.tween_property(character_node, "scale", Vector2(1.0, 1.0), 0.12)
+
+
+func trigger_miss() -> void:
+	if not active:
+		return
+
+	take_damage(MISS_DAMAGE)
+	_flinch_character()
+
+
+func _flinch_character() -> void:
+	var tween := create_tween()
+	tween.tween_property(character_node, "modulate", MISS_FLINCH_COLOR, 0.05)
+	tween.tween_property(character_node, "modulate", Color(1, 1, 1), 0.2)
 
 
 func take_damage(amount: float) -> void:

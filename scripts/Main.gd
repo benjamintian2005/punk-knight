@@ -4,6 +4,7 @@ var rhythm_side: Control
 var battle_side: Control
 var game_over_overlay: Control
 var pause_overlay: Control
+var pause_resume_button: Button
 
 
 func _ready() -> void:
@@ -32,6 +33,7 @@ func _ready() -> void:
 	add_child(divider)
 
 	rhythm_side.note_hit.connect(battle_side.trigger_pulse)
+	rhythm_side.note_missed.connect(battle_side.trigger_miss)
 	battle_side.player_died.connect(_on_player_died)
 
 	var level_label := Label.new()
@@ -112,9 +114,9 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	panel.add_child(music_row.container)
 	music_row.slider.value_changed.connect(_on_music_volume_changed.bind(music_row.value_label))
 
-	var resume_button := _build_pause_button("Resume", Vector2(30.0, 200.0), panel_width - 60.0)
-	resume_button.pressed.connect(_resume)
-	panel.add_child(resume_button)
+	pause_resume_button = _build_pause_button("Resume", Vector2(30.0, 200.0), panel_width - 60.0)
+	pause_resume_button.pressed.connect(_resume)
+	panel.add_child(pause_resume_button)
 
 	var quit_button := _build_pause_button("Quit to Level Select", Vector2(30.0, 250.0), panel_width - 60.0)
 	quit_button.pressed.connect(_quit_to_level_select)
@@ -176,6 +178,7 @@ func _open_pause() -> void:
 	pause_overlay.visible = true
 	rhythm_side.set_active(false)
 	battle_side.set_active(false)
+	pause_resume_button.grab_focus()
 
 
 func _resume() -> void:
