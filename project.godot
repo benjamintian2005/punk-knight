@@ -11,9 +11,9 @@ config_version=5
 [application]
 
 config/name="Punk Knight"
+run/main_scene="res://scenes/TitleScreen.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
-run/main_scene="res://scenes/LevelSelect.tscn"
 
 [autoload]
 

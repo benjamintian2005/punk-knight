@@ -4,6 +4,7 @@ signal player_died
 
 const CHARACTER_RADIUS := 26.0
 const CHARACTER_MAX_HP := 100.0
+const MISS_DAMAGE := 5.0
 
 const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
 
@@ -87,7 +88,8 @@ func _build_ui() -> void:
 	character_center = size / 2.0
 
 	var hp_bg := Panel.new()
-	hp_bg.position = Vector2((size.x - hp_bar_width) / 2.0, 20.0)
+	# Bottom of the screen - the top half is now the note runway.
+	hp_bg.position = Vector2((size.x - hp_bar_width) / 2.0, size.y - 46.0)
 	hp_bg.size = Vector2(hp_bar_width, 16.0)
 	var hp_bg_style := StyleBoxFlat.new()
 	hp_bg_style.bg_color = Color(0.2, 0.05, 0.08)
@@ -305,7 +307,20 @@ func _punch_character() -> void:
 	tween.tween_property(character_node, "scale", Vector2(1.0, 1.0), 0.12)
 
 
+func on_note_missed() -> void:
+	if not active:
+		return
+	take_damage(MISS_DAMAGE)
+
+
+func _flinch_character() -> void:
+	var tween := create_tween()
+	tween.tween_property(character_node, "modulate", Color(1.7, 0.45, 0.45), 0.05)
+	tween.tween_property(character_node, "modulate", Color(1, 1, 1), 0.22)
+
+
 func take_damage(amount: float) -> void:
+	_flinch_character()
 	character_hp = max(character_hp - amount, 0.0)
 	update_hp_bar()
 	if character_hp <= 0.0 and active:
