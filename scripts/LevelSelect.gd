@@ -144,7 +144,8 @@ func _process(delta: float) -> void:
 		player_pos += dir.normalized() * PLAYER_SPEED * delta
 		player_pos.x = clampf(player_pos.x, 24.0, vsize.x - 24.0)
 		player_pos.y = clampf(player_pos.y, 90.0, vsize.y - 24.0)
-		player.flip_h = dir.x < 0.0
+		if dir.x != 0.0:
+			player.flip_h = dir.x < 0.0
 		_update_player_position()
 
 	_update_nearby_flag()
