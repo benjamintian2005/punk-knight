@@ -79,6 +79,11 @@ var combo := 0
 var max_combo := 0
 var combo_tier := -1
 
+# Consecutive PERFECTs only - breaks on a GOOD, not just a miss, so it stays
+# a genuine precision reward rather than a looser combo variant.
+var perfect_streak := 0
+const BIG_PULSE_STREAK := 5
+
 var notes_layer: Control
 var lane_arcs: Array = []
 var ring_tweens: Array = []
@@ -383,11 +388,20 @@ func judge_hit(note: Dictionary, text: String, points: int, color: Color) -> voi
 	remove_note(note)
 	note_hit.emit(text)
 
+	if is_perfect:
+		perfect_streak += 1
+		if perfect_streak >= BIG_PULSE_STREAK:
+			perfect_streak = 0
+			note_hit.emit("BIG")
+	else:
+		perfect_streak = 0
+
 
 func judge_miss(note: Dictionary) -> void:
 	note["judged"] = true
 	combo = 0
 	combo_tier = -1
+	perfect_streak = 0
 	update_labels()
 	_hide_combo()
 	show_judgment("MISS", Color(1.0, 0.35, 0.35))
@@ -398,6 +412,7 @@ func judge_miss(note: Dictionary) -> void:
 func judge_whiff() -> void:
 	combo = 0
 	combo_tier = -1
+	perfect_streak = 0
 	update_labels()
 	_hide_combo()
 	show_judgment("MISS", Color(1.0, 0.35, 0.35))
@@ -576,6 +591,7 @@ func reset() -> void:
 	combo = 0
 	combo_tier = -1
 	max_combo = 0
+	perfect_streak = 0
 	update_labels()
 	judgment_label.modulate.a = 0.0
 	combo_label.modulate.a = 0.0

@@ -6,6 +6,12 @@ var game_over_overlay: Control
 var pause_overlay: Control
 var pause_resume_button: Button
 
+var shake_strength := 0.0
+const SHAKE_DECAY := 70.0   # units/sec - fast, punchy, gone within ~0.2s
+const SHAKE_PERFECT := 14.0
+const SHAKE_GOOD := 6.0
+const SHAKE_BIG := 30.0
+
 
 func _ready() -> void:
 	var vsize := get_viewport_rect().size
@@ -31,6 +37,7 @@ func _ready() -> void:
 	add_child(rhythm_side)
 
 	rhythm_side.note_hit.connect(battle_side.trigger_pulse)
+	rhythm_side.note_hit.connect(_on_note_hit)
 	rhythm_side.note_missed.connect(battle_side.on_note_missed)
 	battle_side.player_died.connect(_on_player_died)
 
@@ -47,6 +54,26 @@ func _ready() -> void:
 	_build_pause_overlay(vsize)
 
 
+func _process(delta: float) -> void:
+	if shake_strength <= 0.0:
+		return
+	position = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake_strength
+	shake_strength = maxf(shake_strength - SHAKE_DECAY * delta, 0.0)
+	if shake_strength <= 0.0:
+		position = Vector2.ZERO
+
+
+func _on_note_hit(judgment: String) -> void:
+	# max(), not add - overlapping hits refresh the shake instead of stacking
+	# into something disorienting.
+	var strength := SHAKE_GOOD
+	if judgment == "PERFECT":
+		strength = SHAKE_PERFECT
+	elif judgment == "BIG":
+		strength = SHAKE_BIG
+	shake_strength = maxf(shake_strength, strength)
+
+
 func _build_dim_rect() -> ColorRect:
 	var dim := ColorRect.new()
 	dim.color = Color(0.0, 0.0, 0.0, 0.75)
@@ -60,6 +87,10 @@ func _build_game_over_overlay(vsize: Vector2) -> void:
 	game_over_overlay.anchor_right = 1.0
 	game_over_overlay.anchor_bottom = 1.0
 	game_over_overlay.visible = false
+	# z_index sorts across the WHOLE canvas, not just among siblings - notes
+	# in RhythmSide get up to ~SPAWN_RADIUS (300) for their own depth
+	# ordering, so this needs to clear that or they'd render on top of us.
+	game_over_overlay.z_index = 1000
 	add_child(game_over_overlay)
 	game_over_overlay.add_child(_build_dim_rect())
 
@@ -79,6 +110,8 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	pause_overlay.anchor_right = 1.0
 	pause_overlay.anchor_bottom = 1.0
 	pause_overlay.visible = false
+	# See game_over_overlay's z_index comment - same reason.
+	pause_overlay.z_index = 1000
 	add_child(pause_overlay)
 	pause_overlay.add_child(_build_dim_rect())
 
@@ -87,12 +120,8 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	var panel := Panel.new()
 	panel.position = Vector2((vsize.x - panel_width) / 2.0, (vsize.y - panel_height) / 2.0)
 	panel.size = Vector2(panel_width, panel_height)
-	var panel_style := StyleBoxFlat.new()
-	panel_style.bg_color = Color(0.13, 0.13, 0.17)
-	panel_style.border_color = Color(0.3, 0.3, 0.36)
-	panel_style.set_border_width_all(2)
-	panel_style.set_corner_radius_all(10)
-	panel.add_theme_stylebox_override("panel", panel_style)
+	# Styling now comes from the shared Theme (theme/game_theme.tres) - this
+	# used to hand-roll the exact same StyleBoxFlat locally.
 	pause_overlay.add_child(panel)
 
 	var title := Label.new()

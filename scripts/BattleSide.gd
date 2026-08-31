@@ -32,6 +32,13 @@ const GOOD_KNOCKBACK := 90.0
 const GOOD_DURATION := 0.3
 const GOOD_COLOR := Color(0.5, 0.9, 1.0)
 
+# Fired by RhythmSide on every 5th consecutive PERFECT - a much bigger,
+# distinctly-colored version of the same ring, so a hot streak reads as a
+# genuine payoff instead of just another PERFECT.
+const BIG_PULSE_RADIUS := 420.0
+const BIG_PULSE_DURATION := 0.6
+const BIG_PULSE_COLOR := Color(1.0, 0.3, 0.85)
+
 # Enemies are notes now - RhythmSide spawns them on the chart. Flip this back
 # on to restore the old free-running spawner.
 var ambient_enemies := false
@@ -228,10 +235,24 @@ func trigger_pulse(judgment: String) -> void:
 	if not active:
 		return
 
-	var is_perfect := judgment == "PERFECT"
-	var color: Color = PERFECT_COLOR if is_perfect else GOOD_COLOR
-	var max_radius: float = PERFECT_RADIUS if is_perfect else GOOD_RADIUS
-	var duration: float = PERFECT_DURATION if is_perfect else GOOD_DURATION
+	# BIG counts as perfect-tier for enemy interaction (max damage/knockback),
+	# it's just a much bigger, differently-colored ring on top of that.
+	var is_perfect := judgment != "GOOD"
+	var color: Color
+	var max_radius: float
+	var duration: float
+	if judgment == "BIG":
+		color = BIG_PULSE_COLOR
+		max_radius = BIG_PULSE_RADIUS
+		duration = BIG_PULSE_DURATION
+	elif judgment == "PERFECT":
+		color = PERFECT_COLOR
+		max_radius = PERFECT_RADIUS
+		duration = PERFECT_DURATION
+	else:
+		color = GOOD_COLOR
+		max_radius = GOOD_RADIUS
+		duration = GOOD_DURATION
 
 	var ring := Panel.new()
 	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -261,7 +282,7 @@ func trigger_pulse(judgment: String) -> void:
 		"hit_ids": {},
 	})
 
-	_punch_character()
+	_punch_character(1.35 if judgment == "BIG" else 1.15)
 
 
 func _update_pulses() -> void:
@@ -322,9 +343,9 @@ func _remove_enemy(enemy: Dictionary) -> void:
 	tween.tween_callback(node.queue_free)
 
 
-func _punch_character() -> void:
+func _punch_character(strength: float = 1.15) -> void:
 	var tween := create_tween()
-	tween.tween_property(character_node, "scale", Vector2(1.15, 1.15), 0.05)
+	tween.tween_property(character_node, "scale", Vector2(strength, strength), 0.05)
 	tween.tween_property(character_node, "scale", Vector2(1.0, 1.0), 0.12)
 
 
