@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="LevelData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/LevelData.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+order = 0
+title = "Tutorial"
+description = "Learn D F J K - one lane at a time, then all together."
+bpm = 80.0
+beat_pattern = [0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 3, -1, -1, -1, 0, 1, 2, 3, -1, -1, -1, -1]
+pattern_repeats = 2
+enemy_spawn_min = 4.0
+enemy_spawn_max = 6.0

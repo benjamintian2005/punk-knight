@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1")
-order = 3
+order = 1
 title = "Angel With A Shotgun"
 description = "Hand-charted - 96 notes, 142.55 BPM"
 bpm = 142.55
