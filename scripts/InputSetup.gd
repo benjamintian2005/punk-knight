@@ -2,13 +2,13 @@ extends Node
 
 const LANE_ACTIONS := ["lane_0", "lane_1", "lane_2", "lane_3"]
 
-# Arrows are the real binding now - the rails ARE left/down/up/right, so the
-# key and the direction it defends are the same thing.
-const LANE_PRIMARY_KEYS := [KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT]
+# D F J K is the real binding: two hands resting in the home position, the way
+# every other 4-key rhythm game plays. This is what the rails are labelled with.
+const LANE_PRIMARY_KEYS := [KEY_D, KEY_F, KEY_J, KEY_K]
 
-# D F J K kept as a second binding: same hand position as a normal 4-key
-# rhythm game, for anyone who'd rather not play one-handed on the arrows.
-const LANE_ALT_KEYS := [KEY_D, KEY_F, KEY_J, KEY_K]
+# Arrows kept as a second binding - the rails ARE left/down/up/right, so for
+# anyone who'd rather play one-handed the key matches the direction it defends.
+const LANE_ALT_KEYS := [KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT]
 
 
 func _ready() -> void:

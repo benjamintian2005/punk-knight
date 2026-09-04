@@ -4,7 +4,7 @@ signal note_hit(judgment: String)
 signal note_missed
 
 const LANE_COUNT := 4
-const LANE_KEY_LABELS := ["←", "↓", "↑", "→"]
+const LANE_KEY_LABELS := ["D", "F", "J", "K"]
 const LANE_COLORS := [
 	Color(0.95, 0.28, 0.35),
 	Color(0.30, 0.85, 0.45),
