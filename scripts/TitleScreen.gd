@@ -88,4 +88,4 @@ func _input(event: InputEvent) -> void:
 		or (event is InputEventScreenTouch and event.pressed)
 	if pressed:
 		started = true
-		get_tree().change_scene_to_file("res://scenes/LevelSelect.tscn")
+		SceneTransition.change_scene("res://scenes/LevelSelect.tscn")

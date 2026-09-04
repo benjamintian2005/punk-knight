@@ -20,9 +20,12 @@ config/icon="res://icon.svg"
 GameState="*res://scripts/GameState.gd"
 InputSetup="*res://scripts/InputSetup.gd"
 Settings="*res://scripts/Settings.gd"
+Sfx="*res://scripts/Sfx.gd"
+SceneTransition="*res://scripts/SceneTransition.gd"
 
 [display]
 
+window/size/mode=3
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 

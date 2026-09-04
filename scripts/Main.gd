@@ -12,6 +12,10 @@ const SHAKE_PERFECT := 14.0
 const SHAKE_GOOD := 6.0
 const SHAKE_BIG := 30.0
 
+const HIT_STOP_SCALE := 0.06
+const HIT_STOP_DURATION := 0.05
+var _hit_stop_active := false
+
 
 func _ready() -> void:
 	var vsize := get_viewport_rect().size
@@ -71,7 +75,25 @@ func _on_note_hit(judgment: String) -> void:
 		strength = SHAKE_PERFECT
 	elif judgment == "BIG":
 		strength = SHAKE_BIG
+		_trigger_hit_stop()
 	shake_strength = maxf(shake_strength, strength)
+
+
+# A brief freeze-frame on the rare 5-perfect BIG streak only - doing this on
+# every PERFECT would fight the shake/tween juice and get fatiguing fast.
+func _trigger_hit_stop() -> void:
+	if _hit_stop_active:
+		return
+	_hit_stop_active = true
+	Engine.time_scale = HIT_STOP_SCALE
+	# ignore_time_scale=true, or this restore timer would itself be slowed by
+	# the very time_scale dip it's meant to cancel.
+	get_tree().create_timer(HIT_STOP_DURATION, true, false, true).timeout.connect(_end_hit_stop)
+
+
+func _end_hit_stop() -> void:
+	Engine.time_scale = 1.0
+	_hit_stop_active = false
 
 
 func _build_dim_rect() -> ColorRect:
@@ -116,7 +138,7 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	pause_overlay.add_child(_build_dim_rect())
 
 	var panel_width := 360.0
-	var panel_height := 300.0
+	var panel_height := 410.0
 	var panel := Panel.new()
 	panel.position = Vector2((vsize.x - panel_width) / 2.0, (vsize.y - panel_height) / 2.0)
 	panel.size = Vector2(panel_width, panel_height)
@@ -141,12 +163,22 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	panel.add_child(music_row.container)
 	music_row.slider.value_changed.connect(_on_music_volume_changed.bind(music_row.value_label))
 
-	pause_resume_button = _build_pause_button("Resume", Vector2(30.0, 200.0), panel_width - 60.0)
+	var sfx_row := _build_volume_row("SFX Volume", Settings.sfx_volume, 190.0, panel_width)
+	panel.add_child(sfx_row.container)
+	sfx_row.slider.value_changed.connect(_on_sfx_volume_changed.bind(sfx_row.value_label))
+
+	var fullscreen_row := _build_toggle_row("Fullscreen", Settings.fullscreen, 250.0, panel_width)
+	panel.add_child(fullscreen_row.container)
+	fullscreen_row.toggle.toggled.connect(Settings.set_fullscreen)
+
+	pause_resume_button = _build_pause_button("Resume", Vector2(30.0, 310.0), panel_width - 60.0)
 	pause_resume_button.pressed.connect(_resume)
+	pause_resume_button.pressed.connect(UiFx.punch.bind(pause_resume_button))
 	panel.add_child(pause_resume_button)
 
-	var quit_button := _build_pause_button("Quit to Level Select", Vector2(30.0, 250.0), panel_width - 60.0)
+	var quit_button := _build_pause_button("Quit to Level Select", Vector2(30.0, 360.0), panel_width - 60.0)
 	quit_button.pressed.connect(_quit_to_level_select)
+	quit_button.pressed.connect(UiFx.punch.bind(quit_button))
 	panel.add_child(quit_button)
 
 
@@ -183,6 +215,29 @@ func _build_volume_row(label_text: String, initial_value: float, y: float, panel
 	return {"container": row, "slider": slider, "value_label": value_label}
 
 
+func _build_toggle_row(label_text: String, initial_value: bool, y: float, panel_width: float) -> Dictionary:
+	var row := Control.new()
+	row.position = Vector2(0.0, y)
+	row.size = Vector2(panel_width, 40.0)
+
+	var label := Label.new()
+	label.text = label_text
+	label.position = Vector2(30.0, 0.0)
+	label.size = Vector2(panel_width - 100.0, 30.0)
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.85))
+	row.add_child(label)
+
+	var toggle := CheckButton.new()
+	toggle.button_pressed = initial_value
+	toggle.position = Vector2(panel_width - 92.0, 0.0)
+	toggle.size = Vector2(62.0, 30.0)
+	row.add_child(toggle)
+
+	return {"container": row, "toggle": toggle}
+
+
 func _build_pause_button(text: String, pos: Vector2, width: float) -> Button:
 	var button := Button.new()
 	button.text = text
@@ -201,6 +256,11 @@ func _on_music_volume_changed(value: float, value_label: Label) -> void:
 	value_label.text = "%d%%" % int(round(value * 100.0))
 
 
+func _on_sfx_volume_changed(value: float, value_label: Label) -> void:
+	Settings.set_sfx_volume(value)
+	value_label.text = "%d%%" % int(round(value * 100.0))
+
+
 func _open_pause() -> void:
 	pause_overlay.visible = true
 	rhythm_side.set_active(false)
@@ -215,7 +275,7 @@ func _resume() -> void:
 
 
 func _quit_to_level_select() -> void:
-	get_tree().change_scene_to_file("res://scenes/LevelSelect.tscn")
+	SceneTransition.change_scene("res://scenes/LevelSelect.tscn")
 
 
 func _on_player_died() -> void:
@@ -225,8 +285,9 @@ func _on_player_died() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
+		get_viewport().set_input_as_handled()
 		if game_over_overlay.visible:
-			get_tree().change_scene_to_file("res://scenes/LevelSelect.tscn")
+			SceneTransition.change_scene("res://scenes/LevelSelect.tscn")
 		elif pause_overlay.visible:
 			_resume()
 		else:

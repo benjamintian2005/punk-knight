@@ -380,11 +380,13 @@ func judge_hit(note: Dictionary, text: String, points: int, color: Color) -> voi
 		combo_tier = tier
 	update_labels()
 	var is_perfect := text == "PERFECT"
+	Sfx.play("hit_perfect" if is_perfect else "hit_good")
 	show_judgment(text, color, 1.9 if is_perfect else 1.3)
 	flare_target(note["lane"], is_perfect)
 	_refresh_combo(tier)
 	if tier >= 0:
 		_combo_flair(tier)
+		Sfx.play("combo_milestone")
 	remove_note(note)
 	note_hit.emit(text)
 
@@ -392,6 +394,7 @@ func judge_hit(note: Dictionary, text: String, points: int, color: Color) -> voi
 		perfect_streak += 1
 		if perfect_streak >= BIG_PULSE_STREAK:
 			perfect_streak = 0
+			Sfx.play("big", 0.0)
 			note_hit.emit("BIG")
 	else:
 		perfect_streak = 0
@@ -404,6 +407,7 @@ func judge_miss(note: Dictionary) -> void:
 	perfect_streak = 0
 	update_labels()
 	_hide_combo()
+	Sfx.play("miss")
 	show_judgment("MISS", Color(1.0, 0.35, 0.35))
 	remove_note(note)
 	note_missed.emit()
@@ -415,6 +419,7 @@ func judge_whiff() -> void:
 	perfect_streak = 0
 	update_labels()
 	_hide_combo()
+	Sfx.play("miss")
 	show_judgment("MISS", Color(1.0, 0.35, 0.35))
 	note_missed.emit()
 

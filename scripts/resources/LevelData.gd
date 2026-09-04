@@ -10,6 +10,7 @@ class_name LevelData
 @export var enemy_spawn_min: float = 1.0
 @export var enemy_spawn_max: float = 2.2
 @export var enemy_types: Array[EnemyType] = []  # empty = BattleSide's default roster
+@export var background_path: String = ""  # empty = BattleSide's default flat background
 
 # --- real-song charts ---------------------------------------------------
 # When note_times is non-empty it REPLACES beat_pattern/pattern_repeats:

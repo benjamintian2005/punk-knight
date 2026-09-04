@@ -1,0 +1,5 @@
+overworld_grass.png  - from Kenney's "Tiny Town" asset pack (kenney.nl/assets/tiny-town)
+dungeon_floor.png    - from Kenney's "Tiny Dungeon" asset pack (kenney.nl/assets/tiny-dungeon)
+
+Both CC0 (public domain) - free for any use, no attribution required.
+Credited here anyway per Kenney's request. https://kenney.nl

@@ -54,6 +54,10 @@ var hp_fill: ColorRect
 var hp_bar_width := 220.0
 var hp_label: Label
 
+# Level-dependent floor art; overridden by configure() before _ready runs.
+# Empty = the plain flat background below stays as-is.
+var background_path := ""
+
 var enemies_layer: Control
 var pulses_layer: Control
 var enemies: Array = []
@@ -64,6 +68,7 @@ func configure(level: LevelData) -> void:
 	enemy_spawn_min = level.enemy_spawn_min
 	enemy_spawn_max = level.enemy_spawn_max
 	active_enemy_types = level.enemy_types if not level.enemy_types.is_empty() else _get_default_enemy_types()
+	background_path = level.background_path
 
 
 func get_enemy_roster() -> Array[EnemyType]:
@@ -113,6 +118,19 @@ func _build_ui() -> void:
 	background.anchor_right = 1.0
 	background.anchor_bottom = 1.0
 	add_child(background)
+
+	if background_path != "" and ResourceLoader.exists(background_path):
+		var floor_tex := TextureRect.new()
+		floor_tex.texture = load(background_path)
+		floor_tex.stretch_mode = TextureRect.STRETCH_TILE
+		floor_tex.anchor_right = 1.0
+		floor_tex.anchor_bottom = 1.0
+		floor_tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		# Darkened/blended over the flat background above, not a straight
+		# replacement - the arena's contrast (rings, judgment text, sigils)
+		# was tuned against a near-black backdrop, and this tile is bright.
+		floor_tex.modulate = Color(0.5, 0.42, 0.4, 0.8)
+		add_child(floor_tex)
 
 	character_center = size / 2.0
 
@@ -335,6 +353,7 @@ func _flash(node: Control) -> void:
 
 
 func _remove_enemy(enemy: Dictionary) -> void:
+	Sfx.play("enemy_death")
 	enemies.erase(enemy)
 	var node: Control = enemy["node"]
 	var tween := create_tween()
