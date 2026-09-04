@@ -34,11 +34,13 @@ func _ready() -> void:
 	rhythm_side = Control.new()
 	rhythm_side.set_script(load("res://scripts/RhythmSide.gd"))
 	rhythm_side.configure(level)
-	rhythm_side.set_enemy_types(battle_side.get_enemy_roster())
 	rhythm_side.position = Vector2.ZERO
 	rhythm_side.size = vsize
 	rhythm_side.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(rhythm_side)
+
+	# The horde converges on the downbeat, so it needs the chart to exist first.
+	battle_side.begin_horde(rhythm_side.first_note_time(), rhythm_side.STRIKE_RADIUS)
 
 	rhythm_side.note_hit.connect(battle_side.trigger_pulse)
 	rhythm_side.note_hit.connect(_on_note_hit)

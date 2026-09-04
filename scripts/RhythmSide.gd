@@ -12,18 +12,37 @@ const LANE_COLORS := [
 	Color(0.98, 0.85, 0.25),
 ]
 
-const NOTE_TRAVEL_TIME := 1.4
+# How long an arc is on screen before it lands. This IS the reaction window,
+# so it is the first thing to turn up if the chart feels unreadable.
+const NOTE_TRAVEL_TIME := 2.2
 const HIT_LINE_Y_RATIO := 0.5
-const NOTE_ARC_HALF := 0.17   # half-width of the slice a creature carries
 const ARC_GAP := 0.05   # radians trimmed off each end so the four read as four
+const ARC_SEGMENTS := 48   # a full 90-degree sweep needs more than a slice did
 
 # D F J K -> left, down, up, right. Outward from the knight.
 const LANE_DIRS := [Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1), Vector2(1, 0)]
 const WEDGE_HALF_ANGLE := PI / 4.0   # 45 deg each side -> the four wedges tile
-                                     # the full circle with no dead ground
+									 # the full circle with no dead ground
 const STRIKE_RADIUS := 88.0    # where a creature is judged
-const SPAWN_RADIUS := 300.0    # where it appears; same on every rail, so
-                               # distance reads as time identically in all four
+
+# The rune under a creature and the strike ring are both strokes, so they touch
+# when the gap between their centre lines closes to half of each: the ring core
+# is LaneArc.thickness (5) wide, the rune tops out at NOTE_ARC_WIDTH_NEAR (7).
+const NOTE_ARC_WIDTH_FAR := 3.5
+const NOTE_ARC_WIDTH_NEAR := 7.0
+const CONTACT_BAND := 6.0
+
+# Contact lights the quadrant almost instantly and lets it cool slowly, so the
+# ring reads as struck rather than blinking.
+const GLOW_ATTACK := 22.0
+const GLOW_RELEASE := 3.5
+# Bloom stacked under a touching rune, same faked-glow trick the ring uses.
+const CONTACT_GLOW_PASSES := [[4.2, 0.10], [2.4, 0.16], [1.5, 0.24]]
+# Where an arc appears - the same on every rail, so distance reads as time
+# identically in all four. Sized to the arena rather than fixed, so the extra
+# room on a bigger window becomes extra runway instead of dead margin.
+const SPAWN_MARGIN := 16.0
+var spawn_radius := 300.0
 
 # How hard the target reacts. A whiff barely twitches; PERFECT slams.
 const WHIFF_POP := 1.05
@@ -41,7 +60,6 @@ const MILESTONE_COLORS := [
 	Color(1.0, 1.0, 1.0),
 ]
 
-const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
 const LANE_ARC_SCRIPT := preload("res://scripts/LaneArc.gd")
 
 const PERFECT_WINDOW := 0.05
@@ -67,7 +85,6 @@ var active := true
 
 var arena_center: Vector2
 var lane_anchor: Array = []
-var enemy_types: Array[EnemyType] = []
 
 var song_time := 0.0
 var beatmap: Array = []
@@ -84,8 +101,8 @@ var combo_tier := -1
 var perfect_streak := 0
 const BIG_PULSE_STREAK := 5
 
-var notes_layer: Control
 var lane_arcs: Array = []
+var lane_glow: Array = []
 var ring_tweens: Array = []
 var score_label: Label
 var judgment_label: Label
@@ -103,6 +120,8 @@ func _ready() -> void:
 func _build_ui() -> void:
 	# One arena: the knight at the centre, four rails running out from him.
 	arena_center = Vector2(size.x / 2.0, size.y * HIT_LINE_Y_RATIO)
+	# Every rail has to fit on screen, so the shorter axis sets the runway.
+	spawn_radius = minf(size.x, size.y) / 2.0 - SPAWN_MARGIN
 
 	for i in LANE_COUNT:
 		var base: float = LANE_DIRS[i].angle()
@@ -122,6 +141,7 @@ func _build_ui() -> void:
 		arc.end_angle = base + WEDGE_HALF_ANGLE - ARC_GAP
 		add_child(arc)
 		lane_arcs.append(arc)
+		lane_glow.append(0.0)
 		ring_tweens.append(null)
 
 		var key_label := Label.new()
@@ -134,12 +154,6 @@ func _build_ui() -> void:
 		key_label.add_theme_font_size_override("font_size", 20)
 		key_label.add_theme_color_override("font_color", Color(LANE_COLORS[i].r, LANE_COLORS[i].g, LANE_COLORS[i].b, 0.75))
 		add_child(key_label)
-
-	notes_layer = Control.new()
-	notes_layer.anchor_right = 1.0
-	notes_layer.anchor_bottom = 1.0
-	notes_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(notes_layer)
 
 	score_label = Label.new()
 	score_label.text = "Score: 0"
@@ -173,27 +187,6 @@ func _build_ui() -> void:
 	combo_label.pivot_offset = Vector2(0.0, 26.0)
 	combo_label.rotation = MILESTONE_TILT
 	add_child(combo_label)
-
-
-func set_enemy_types(types: Array[EnemyType]) -> void:
-	enemy_types = types
-
-
-func _pick_enemy_type() -> EnemyType:
-	if enemy_types.is_empty():
-		return EnemyType.new()
-	var total := 0
-	for t in enemy_types:
-		total += t.spawn_weight
-	if total <= 0:
-		return enemy_types[0]
-	var roll := randi_range(1, total)
-	var acc := 0
-	for t in enemy_types:
-		acc += t.spawn_weight
-		if roll <= acc:
-			return t
-	return enemy_types[0]
 
 
 func configure(level: LevelData) -> void:
@@ -239,6 +232,12 @@ func generate_beatmap() -> void:
 			t += step
 
 
+# The chart's first beat, for anything that wants to line up with it - the
+# horde uses it to time its arrival. Absolute song time, offset included.
+func first_note_time() -> float:
+	return float(beatmap[0]["time"]) if beatmap.size() > 0 else 0.0
+
+
 func _process(delta: float) -> void:
 	if not active:
 		return
@@ -264,86 +263,77 @@ func _process(delta: float) -> void:
 		song_time = 0.0
 		next_note_index = 0
 
+	var lane_lit := []
+	lane_lit.resize(LANE_COUNT)
+	lane_lit.fill(false)
+
 	for note in active_notes.duplicate():
 		var t_remaining: float = note["hit_time"] - song_time
 		_place_note(note, t_remaining)
+		# Latched on first touch: a creature that walks THROUGH the ring keeps
+		# its rune lit instead of blinking off on the way past.
+		if not note["contact"] and absf(float(note["dist"]) - STRIKE_RADIUS) <= CONTACT_BAND:
+			note["contact"] = true
+		if note["contact"]:
+			lane_lit[note["lane"]] = true
 		if not note["judged"] and t_remaining < -MISS_WINDOW:
 			judge_miss(note)
 
+	_update_lane_glow(lane_lit, delta)
 	queue_redraw()
 
 
+func _update_lane_glow(lane_lit: Array, delta: float) -> void:
+	for lane in LANE_COUNT:
+		var target: float = 1.0 if lane_lit[lane] else 0.0
+		var rate: float = GLOW_ATTACK if target > lane_glow[lane] else GLOW_RELEASE
+		lane_glow[lane] = move_toward(lane_glow[lane], target, rate * delta)
+		lane_arcs[lane].glow = lane_glow[lane]
+
+
 func _draw() -> void:
-	# Every creature carries the slice of the ring it is going to land on: an arc
-	# at its own radius, spanning its own angle. As it closes, the slice shrinks
-	# onto the strike ring and brightens - arriving exactly fills in that piece
-	# of the circle. Drawn here on the parent, so it sits UNDER the creatures.
+	# A beat IS its quadrant's arc, drawn out at its own radius and closing in.
+	# It spans exactly the angles of the strike arc underneath it, so the arc
+	# gets physically shorter as it approaches and lands filling that quadrant
+	# precisely - the shrink is the timing cue.
 	for note in active_notes:
-		var dist: float = note.get("dist", SPAWN_RADIUS)
-		var ang: float = note.get("angle", 0.0)
-		var near: float = 1.0 - clampf((dist - STRIKE_RADIUS) / (SPAWN_RADIUS - STRIKE_RADIUS), 0.0, 1.0)
-		var col: Color = LANE_COLORS[note["lane"]]
-		draw_arc(arena_center, dist, ang - NOTE_ARC_HALF, ang + NOTE_ARC_HALF, 28,
-			Color(col.r, col.g, col.b, lerpf(0.22, 1.0, near)),
-			lerpf(2.5, 7.0, near), true)
+		var lane: int = note["lane"]
+		var target: Control = lane_arcs[lane]
+		var dist: float = note.get("dist", spawn_radius)
+		var near: float = 1.0 - clampf((dist - STRIKE_RADIUS) / (spawn_radius - STRIKE_RADIUS), 0.0, 1.0)
+		var col: Color = LANE_COLORS[lane]
+		var width: float = lerpf(NOTE_ARC_WIDTH_FAR, NOTE_ARC_WIDTH_NEAR, near)
+		# Touching down blooms the arc out around its core, so the landing
+		# reads as a flare and not just the end of a fade.
+		if note["contact"]:
+			for glow_pass in CONTACT_GLOW_PASSES:
+				draw_arc(arena_center, dist, target.start_angle, target.end_angle, ARC_SEGMENTS,
+					Color(col.r, col.g, col.b, glow_pass[1]), width * glow_pass[0], true)
+		# Brightness ramps early rather than linearly, so an arc is readable as
+		# soon as it appears instead of only once it is nearly on top of you.
+		draw_arc(arena_center, dist, target.start_angle, target.end_angle, ARC_SEGMENTS,
+			Color(col.r, col.g, col.b, lerpf(0.45, 1.0, sqrt(near))), width, true)
 
 
 func _place_note(note: Dictionary, t_remaining: float) -> void:
-	# Distance IS time: full travel time sits at SPAWN_RADIUS, zero sits exactly
-	# on the strike ring, negative keeps walking in toward the knight.
-	var lane: int = note["lane"]
+	# Distance IS time: full travel time sits at spawn_radius, zero sits exactly
+	# on the strike ring, negative keeps closing in on the knight. The angles
+	# never move - only the radius does - so the arc sweeps the same quadrant
+	# the whole way in and simply contracts onto its target.
 	var f: float = clampf(t_remaining / NOTE_TRAVEL_TIME, -1.0, 1.0)
-	var dist: float = STRIKE_RADIUS + f * (SPAWN_RADIUS - STRIKE_RADIUS)
-
-	# Each lane owns a full 90-degree wedge, and its arc spans that whole wedge -
-	# so a creature just walks straight in on whatever angle it spawned at and
-	# still crosses its own lane's target. No convergence needed.
-	#
-	# The offset is ANGULAR, so radial distance is untouched, and that is what
-	# the timing is measured on. Spread costs nothing mechanically.
-	var dir: Vector2 = LANE_DIRS[lane].rotated(float(note["spread"]) * WEDGE_HALF_ANGLE)
-	var anchor: Vector2 = arena_center + dir * dist
-
-	note["angle"] = dir.angle()
-	note["dist"] = dist
-
-	var node: Control = note["node"]
-	# Bottom-centre is the anchor, so the creature stands ON its rune and the
-	# rune is what lines up with the ring.
-	node.position = anchor - Vector2(node.size.x / 2.0, node.size.y)
-	# It walks inward, so it faces the way it came from.
-	node.set_facing(dir.x > 0.0)
-	# Nearer draws over further, so overlap reads as depth instead of a glitch.
-	# Must stay NON-NEGATIVE: z_index sorts across the whole canvas layer, not
-	# just among siblings, so a negative value hides these behind BattleSide's
-	# opaque background.
-	node.z_index = maxi(0, int(SPAWN_RADIUS - dist))
+	note["dist"] = STRIKE_RADIUS + f * (spawn_radius - STRIKE_RADIUS)
 
 
 func spawn_note(beat: Dictionary) -> void:
-	var lane: int = beat["lane"]
-	var type: EnemyType = _pick_enemy_type()
-
-	var node := Control.new()
-	node.set_script(ENEMY_SCRIPT)
-	node.setup(type)
-	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	notes_layer.add_child(node)
-
 	var note := {
-		"node": node,
-		"lane": lane,
+		"lane": beat["lane"],
 		"hit_time": beat["time"],
 		"judged": false,
-		# Where in this lane's wedge it comes from: -1 one edge, +1 the other.
-		"spread": randf_range(-0.88, 0.88),
+		# Set once the arc reaches the ring; lights the arc and its quadrant.
+		"contact": false,
 	}
 	active_notes.append(note)
 	_place_note(note, NOTE_TRAVEL_TIME)
-
-	# They appear on-screen rather than off it, so fade them in.
-	node.modulate.a = 0.0
-	create_tween().tween_property(node, "modulate:a", 1.0, 0.22)
 
 
 func try_hit(lane: int) -> void:
@@ -425,14 +415,9 @@ func judge_whiff() -> void:
 
 
 func remove_note(note: Dictionary) -> void:
+	# The arc is drawn straight from active_notes, so dropping it is the whole
+	# cleanup - the ring flare in flare_target() is what sells the hit.
 	active_notes.erase(note)
-	var node: Control = note["node"]
-	node.set_process(false)
-	var tween := create_tween()
-	tween.set_parallel(true)
-	tween.tween_property(node, "modulate:a", 0.0, 0.18)
-	tween.tween_property(node, "scale", Vector2(1.4, 1.4), 0.18)
-	tween.chain().tween_callback(node.queue_free)
 
 
 func update_labels() -> void:
@@ -587,8 +572,6 @@ func set_active(value: bool) -> void:
 
 
 func reset() -> void:
-	for note in active_notes.duplicate():
-		note["node"].queue_free()
 	active_notes.clear()
 	song_time = 0.0
 	next_note_index = 0

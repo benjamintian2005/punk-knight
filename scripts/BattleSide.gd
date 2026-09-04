@@ -7,7 +7,10 @@ const CHARACTER_MAX_HP := 100.0
 const MISS_DAMAGE := 5.0
 
 const ENEMY_SCRIPT := preload("res://scripts/Enemy.gd")
-const KNIGHT_TEXTURE := preload("res://art/knight_title.png")
+const SHEET_SPRITE_SCRIPT := preload("res://scripts/SheetSprite.gd")
+const KNIGHT_TEXTURE := preload("res://art/knight_idle.png")
+const KNIGHT_FRAMES := 3
+const KNIGHT_FPS := 8.0
 
 # Visual size only - CHARACTER_RADIUS still governs collision, so shrinking or
 # growing the sprite doesn't change how hard the game is.
@@ -39,9 +42,34 @@ const BIG_PULSE_RADIUS := 420.0
 const BIG_PULSE_DURATION := 0.6
 const BIG_PULSE_COLOR := Color(1.0, 0.3, 0.85)
 
-# Enemies are notes now - RhythmSide spawns them on the chart. Flip this back
-# on to restore the old free-running spawner.
-var ambient_enemies := false
+# Beats are arcs on the rhythm side now, so the creatures are free again: a
+# constant horde that spawns on its own and exists to be cleared, not counted.
+var ambient_enemies := true
+
+# A horde is a crowd, so it is capped by population rather than by rate alone -
+# the spawner runs flat out until MAX_ENEMIES are on screen and then just tops
+# up whatever the pulses killed.
+const MAX_ENEMIES := 150
+const SPAWN_BATCH := 3
+# The horde walks in from off-screen at its own speed, never repositioned or
+# repaced. What is timed is the MOMENT IT SPAWNS: the spawner opens early
+# enough that the leading edge crosses the strike ring on the downbeat.
+const SPAWN_MARGIN := 40.0        # clears the screen corner, so nothing pops in
+# Set by Main from the chart: the song time the leading edge should hit, and
+# the ring it should hit - the strike circle the notes land on, not the knight.
+var first_beat_time := 0.0
+var ring_radius := 88.0
+
+# Every death plays a sound, and a single PERFECT can kill dozens at once, so
+# the death sound is rationed per frame - past this the kills are silent and
+# the pool is left free for hits, misses and combos.
+# The horde is spectacle: it swarms the knight and costs nothing to touch, so
+# only missed notes drain HP. The roster keeps its per-type contact_damage -
+# raise this above zero to scale it back in and let the crowd bite again.
+const HORDE_CONTACT_DAMAGE := 0.0
+
+const DEATH_SFX_PER_FRAME := 2
+var _death_sfx_budget := 0
 
 var active := true
 var elapsed_time := 0.0
@@ -49,7 +77,7 @@ var time_to_next_spawn := 1.0
 
 var character_center: Vector2
 var character_hp := CHARACTER_MAX_HP
-var character_node: TextureRect
+var character_node: Control
 var hp_fill: ColorRect
 var hp_bar_width := 220.0
 var hp_label: Label
@@ -112,6 +140,28 @@ func _ready() -> void:
 	time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
 
 
+# Called by Main once the chart is known, since the horde is timed to beat one.
+func begin_horde(first_beat: float, strike_radius: float) -> void:
+	first_beat_time = first_beat
+	ring_radius = strike_radius
+
+
+# Far enough out to be off-screen in every direction, corners included.
+func _spawn_radius() -> float:
+	return size.length() / 2.0 + SPAWN_MARGIN
+
+
+# How long before the downbeat the spawner has to open. Measured against the
+# QUICKEST type in the roster, because that one defines the leading edge: it
+# crosses the ring exactly on the beat and the heavier ones roll in behind it.
+# Pacing this off an average instead would put the fast ones there seconds early.
+func _spawn_lead() -> float:
+	var fastest := 1.0
+	for t in active_enemy_types:
+		fastest = maxf(fastest, t.speed)
+	return (_spawn_radius() - ring_radius) / fastest
+
+
 func _build_ui() -> void:
 	var background := ColorRect.new()
 	background.color = Color(0.08, 0.05, 0.09)
@@ -166,15 +216,10 @@ func _build_ui() -> void:
 	enemies_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(enemies_layer)
 
-	var sprite_w := CHARACTER_SPRITE_HEIGHT * (float(KNIGHT_TEXTURE.get_width()) / float(KNIGHT_TEXTURE.get_height()))
-	character_node = TextureRect.new()
-	character_node.texture = KNIGHT_TEXTURE
-	character_node.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	character_node.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	character_node.size = Vector2(sprite_w, CHARACTER_SPRITE_HEIGHT)
+	character_node = Control.new()
+	character_node.set_script(SHEET_SPRITE_SCRIPT)
+	character_node.setup(KNIGHT_TEXTURE, KNIGHT_FRAMES, KNIGHT_FPS, CHARACTER_SPRITE_HEIGHT)
 	character_node.position = character_center - character_node.size / 2.0
-	character_node.pivot_offset = character_node.size / 2.0
-	character_node.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(character_node)
 
 	pulses_layer = Control.new()
@@ -192,12 +237,16 @@ func _process(delta: float) -> void:
 
 	elapsed_time += delta
 
-	if ambient_enemies:
+	if ambient_enemies and elapsed_time >= first_beat_time - _spawn_lead():
 		time_to_next_spawn -= delta
 		if time_to_next_spawn <= 0.0:
-			spawn_enemy()
+			for i in SPAWN_BATCH:
+				if enemies.size() >= MAX_ENEMIES:
+					break
+				spawn_enemy()
 			time_to_next_spawn = randf_range(enemy_spawn_min, enemy_spawn_max)
 
+	_death_sfx_budget = DEATH_SFX_PER_FRAME
 	_update_enemies(delta)
 	_update_pulses()
 
@@ -218,8 +267,8 @@ func _pick_enemy_type() -> EnemyType:
 func spawn_enemy() -> void:
 	var type: EnemyType = _pick_enemy_type()
 	var angle := randf() * TAU
-	var spawn_radius: float = min(size.x, size.y) / 2.0 - 10.0
-	var pos: Vector2 = character_center + Vector2(cos(angle), sin(angle)) * spawn_radius
+	# Always from the very outside, always at its own speed.
+	var pos: Vector2 = character_center + Vector2(cos(angle), sin(angle)) * _spawn_radius()
 
 	var node := Control.new()
 	node.set_script(ENEMY_SCRIPT)
@@ -245,8 +294,12 @@ func _update_enemies(delta: float) -> void:
 		enemy["node"].position = enemy["center"] - enemy["node"].size / 2.0
 
 		if enemy["center"].distance_to(character_center) <= CHARACTER_RADIUS + float(enemy["radius"]):
-			take_damage(float(enemy["damage"]))
-			_remove_enemy(enemy)
+			var dmg: float = float(enemy["damage"]) * HORDE_CONTACT_DAMAGE
+			if dmg > 0.0:
+				take_damage(dmg)
+			# Walking into the knight is not a kill, so it is silent - otherwise
+			# a hundred arrivals a second would drown everything else out.
+			_remove_enemy(enemy, false)
 
 
 func trigger_pulse(judgment: String) -> void:
@@ -352,8 +405,10 @@ func _flash(node: Control) -> void:
 	tween.tween_property(node, "modulate", Color(1, 1, 1), 0.15)
 
 
-func _remove_enemy(enemy: Dictionary) -> void:
-	Sfx.play("enemy_death")
+func _remove_enemy(enemy: Dictionary, play_sfx: bool = true) -> void:
+	if play_sfx and _death_sfx_budget > 0:
+		_death_sfx_budget -= 1
+		Sfx.play("enemy_death")
 	enemies.erase(enemy)
 	var node: Control = enemy["node"]
 	var tween := create_tween()
