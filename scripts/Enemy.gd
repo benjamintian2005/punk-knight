@@ -63,6 +63,8 @@ func _draw() -> void:
 
 	var center := size / 2.0
 	match shape:
+		"slime":
+			_draw_slime(center, radius)
 		"square":
 			var r := radius * 0.85
 			draw_rect(Rect2(center - Vector2(r, r), Vector2(r * 2.0, r * 2.0)), enemy_color)
@@ -83,3 +85,21 @@ func _draw() -> void:
 			draw_colored_polygon(points, enemy_color)
 		_:
 			draw_circle(center, radius, enemy_color)
+
+
+# A squashed blob with a gloss highlight and two eyes, so every recolor still
+# reads as a slime instead of a plain circle.
+func _draw_slime(center: Vector2, r: float) -> void:
+	var body_center := center + Vector2(0.0, r * 0.12)
+	draw_set_transform(body_center, 0.0, Vector2(1.0, 0.82))
+	draw_circle(Vector2.ZERO, r, enemy_color)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	draw_circle(center + Vector2(-r * 0.35, -r * 0.4), r * 0.28, Color(1.0, 1.0, 1.0, 0.35))
+
+	var eye_dx := r * 0.32
+	var eye_y := center.y - r * 0.05
+	var eye_r := maxf(1.5, r * 0.13)
+	var eye_color := enemy_color.darkened(0.75)
+	draw_circle(Vector2(center.x - eye_dx, eye_y), eye_r, eye_color)
+	draw_circle(Vector2(center.x + eye_dx, eye_y), eye_r, eye_color)

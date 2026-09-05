@@ -5,6 +5,8 @@ var battle_side: Control
 var game_over_overlay: Control
 var pause_overlay: Control
 var pause_resume_button: Button
+var pause_restart_button: Button
+var win_overlay: Control
 
 var shake_strength := 0.0
 const SHAKE_DECAY := 70.0   # units/sec - fast, punchy, gone within ~0.2s
@@ -45,6 +47,7 @@ func _ready() -> void:
 	rhythm_side.note_hit.connect(battle_side.trigger_pulse)
 	rhythm_side.note_hit.connect(_on_note_hit)
 	rhythm_side.note_missed.connect(battle_side.on_note_missed)
+	rhythm_side.song_finished.connect(_on_song_finished)
 	battle_side.player_died.connect(_on_player_died)
 
 	var level_label := Label.new()
@@ -57,6 +60,7 @@ func _ready() -> void:
 	add_child(level_label)
 
 	_build_game_over_overlay(vsize)
+	_build_win_overlay(vsize)
 	_build_pause_overlay(vsize)
 
 
@@ -129,6 +133,27 @@ func _build_game_over_overlay(vsize: Vector2) -> void:
 	game_over_overlay.add_child(label)
 
 
+func _build_win_overlay(vsize: Vector2) -> void:
+	win_overlay = Control.new()
+	win_overlay.anchor_right = 1.0
+	win_overlay.anchor_bottom = 1.0
+	win_overlay.visible = false
+	# See game_over_overlay's z_index comment - same reason.
+	win_overlay.z_index = 1000
+	add_child(win_overlay)
+	win_overlay.add_child(_build_dim_rect())
+
+	var win_label := Label.new()
+	win_label.text = "YOU WIN\n\nPress ENTER to restart"
+	win_label.position = Vector2(0.0, vsize.y / 2.0 - 60.0)
+	win_label.size = Vector2(vsize.x, 120.0)
+	win_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	win_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	win_label.add_theme_font_size_override("font_size", 32)
+	win_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.55))
+	win_overlay.add_child(win_label)
+
+
 func _build_pause_overlay(vsize: Vector2) -> void:
 	pause_overlay = Control.new()
 	pause_overlay.anchor_right = 1.0
@@ -140,7 +165,7 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	pause_overlay.add_child(_build_dim_rect())
 
 	var panel_width := 360.0
-	var panel_height := 410.0
+	var panel_height := 460.0
 	var panel := Panel.new()
 	panel.position = Vector2((vsize.x - panel_width) / 2.0, (vsize.y - panel_height) / 2.0)
 	panel.size = Vector2(panel_width, panel_height)
@@ -178,7 +203,12 @@ func _build_pause_overlay(vsize: Vector2) -> void:
 	pause_resume_button.pressed.connect(UiFx.punch.bind(pause_resume_button))
 	panel.add_child(pause_resume_button)
 
-	var quit_button := _build_pause_button("Quit to Level Select", Vector2(30.0, 360.0), panel_width - 60.0)
+	pause_restart_button = _build_pause_button("Restart", Vector2(30.0, 360.0), panel_width - 60.0)
+	pause_restart_button.pressed.connect(_restart_from_pause)
+	pause_restart_button.pressed.connect(UiFx.punch.bind(pause_restart_button))
+	panel.add_child(pause_restart_button)
+
+	var quit_button := _build_pause_button("Quit to Level Select", Vector2(30.0, 410.0), panel_width - 60.0)
 	quit_button.pressed.connect(_quit_to_level_select)
 	quit_button.pressed.connect(UiFx.punch.bind(quit_button))
 	panel.add_child(quit_button)
@@ -285,10 +315,20 @@ func _on_player_died() -> void:
 	game_over_overlay.visible = true
 
 
+# Fired once every note in a real (finite) chart has been hit or missed -
+# the beat_pattern levels loop forever and never reach this.
+func _on_song_finished() -> void:
+	if game_over_overlay.visible:
+		return
+	rhythm_side.set_active(false)
+	battle_side.set_active(false)
+	win_overlay.visible = true
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
-		if game_over_overlay.visible:
+		if game_over_overlay.visible or win_overlay.visible:
 			SceneTransition.change_scene("res://scenes/LevelSelect.tscn")
 		elif pause_overlay.visible:
 			_resume()
@@ -296,7 +336,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_open_pause()
 		return
 
-	if game_over_overlay.visible and event.is_action_pressed("ui_accept"):
+	if (game_over_overlay.visible or win_overlay.visible) and event.is_action_pressed("ui_accept"):
 		_restart()
 
 
@@ -304,3 +344,9 @@ func _restart() -> void:
 	rhythm_side.reset()
 	battle_side.reset()
 	game_over_overlay.visible = false
+	win_overlay.visible = false
+
+
+func _restart_from_pause() -> void:
+	pause_overlay.visible = false
+	_restart()

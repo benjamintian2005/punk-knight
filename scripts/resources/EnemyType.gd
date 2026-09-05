@@ -1,7 +1,7 @@
 extends Resource
 class_name EnemyType
 
-@export var shape: String = "circle"  # circle, square, triangle, diamond
+@export var shape: String = "slime"  # slime, circle, square, triangle, diamond
 @export var color: Color = Color.WHITE
 @export var radius: float = 15.0
 @export var hp: float = 100.0

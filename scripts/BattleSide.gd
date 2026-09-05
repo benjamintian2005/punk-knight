@@ -12,6 +12,13 @@ const KNIGHT_TEXTURE := preload("res://art/knight_idle.png")
 const KNIGHT_FRAMES := 3
 const KNIGHT_FPS := 8.0
 
+# Every horde enemy is a slime now, sharing one sheet - only the balance
+# stats in _get_default_enemy_types() tell the tiers apart.
+const SLIME_SPRITE := "res://art/enemies/slime.png"
+const SLIME_SPRITE_FRAMES := 9
+const SLIME_SPRITE_FPS := 10.0
+const SLIME_SPRITE_HEIGHT := 60.0
+
 # Visual size only - CHARACTER_RADIUS still governs collision, so shrinking or
 # growing the sprite doesn't change how hard the game is.
 const CHARACTER_SPRITE_HEIGHT := 104.0
@@ -106,16 +113,17 @@ func get_enemy_roster() -> Array[EnemyType]:
 func _get_default_enemy_types() -> Array[EnemyType]:
 	if default_enemy_types.is_empty():
 		default_enemy_types = [
-			_make_enemy_type("circle", Color(0.85, 0.25, 0.35), 15.0, 100.0, 55.0, 12.0, 5,
-				"res://art/enemies/goblin_run.png", 8, 12.0, 56.0),
-			_make_enemy_type("triangle", Color(0.95, 0.55, 0.2), 16.0, 60.0, 95.0, 10.0, 3,
-				"res://art/enemies/flying_eye_flight.png", 8, 14.0, 52.0),
-			_make_enemy_type("square", Color(0.55, 0.4, 0.9), 17.0, 180.0, 38.0, 16.0, 2,
-				"res://art/enemies/skeleton_walk.png", 4, 8.0, 66.0),
-			_make_enemy_type("diamond", Color(0.9, 0.35, 0.75), 15.0, 90.0, 70.0, 18.0, 2,
-				"res://art/enemies/mushroom_run.png", 8, 12.0, 56.0),
+			_make_slime_type(15.0, 100.0, 55.0, 12.0, 5),
+			_make_slime_type(16.0, 60.0, 95.0, 10.0, 3),
+			_make_slime_type(17.0, 180.0, 38.0, 16.0, 2),
+			_make_slime_type(15.0, 90.0, 70.0, 18.0, 2),
 		]
 	return default_enemy_types
+
+
+func _make_slime_type(radius: float, hp: float, speed: float, damage: float, weight: int) -> EnemyType:
+	return _make_enemy_type("slime", Color(0.5, 0.3, 0.75), radius, hp, speed, damage, weight,
+		SLIME_SPRITE, SLIME_SPRITE_FRAMES, SLIME_SPRITE_FPS, SLIME_SPRITE_HEIGHT)
 
 
 func _make_enemy_type(shape: String, color: Color, radius: float, hp: float, speed: float, damage: float, weight: int,

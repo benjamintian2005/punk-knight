@@ -2,6 +2,7 @@ extends Control
 
 signal note_hit(judgment: String)
 signal note_missed
+signal song_finished
 
 const LANE_COUNT := 4
 const LANE_KEY_LABELS := ["D", "F", "J", "K"]
@@ -90,6 +91,7 @@ var song_time := 0.0
 var beatmap: Array = []
 var next_note_index := 0
 var active_notes: Array = []
+var _song_finished := false
 
 var score := 0
 var combo := 0
@@ -262,6 +264,12 @@ func _process(delta: float) -> void:
 	if audio == null and next_note_index >= beatmap.size() and active_notes.is_empty():
 		song_time = 0.0
 		next_note_index = 0
+	elif audio != null and not _song_finished and beatmap.size() > 0 \
+			and next_note_index >= beatmap.size() and active_notes.is_empty():
+		# A real, finite chart - the beat_pattern levels above loop forever by
+		# design and never reach this branch.
+		_song_finished = true
+		song_finished.emit()
 
 	var lane_lit := []
 	lane_lit.resize(LANE_COUNT)
@@ -370,7 +378,6 @@ func judge_hit(note: Dictionary, text: String, points: int, color: Color) -> voi
 		combo_tier = tier
 	update_labels()
 	var is_perfect := text == "PERFECT"
-	Sfx.play("hit_perfect" if is_perfect else "hit_good")
 	show_judgment(text, color, 1.9 if is_perfect else 1.3)
 	flare_target(note["lane"], is_perfect)
 	_refresh_combo(tier)
@@ -575,6 +582,7 @@ func reset() -> void:
 	active_notes.clear()
 	song_time = 0.0
 	next_note_index = 0
+	_song_finished = false
 	score = 0
 	combo = 0
 	combo_tier = -1
